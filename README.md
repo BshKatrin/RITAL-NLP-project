@@ -13,3 +13,16 @@ uv sync
 ```bash
 uv run python src/main.py
 ```
+
+### NLTK data requirements
+
+This project requires the following NLTK packages:
+
+- punkt
+- stopwords
+
+To download the required NLTK data, run:
+
+```bash
+uv run python scripts/setup_nltk.py
+```
