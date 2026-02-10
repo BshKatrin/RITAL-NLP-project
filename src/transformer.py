@@ -45,23 +45,25 @@ class TextPreprocessor(BaseEstimator, TransformerMixin):
         texts = [self.tokenize(text) for text in texts]
 
         # Standardize
-        texts = [self._func(text) for text in texts]
+        # texts = [self._func(texts) for text in texts]
+        texts = self._func(texts)
 
         return texts
 
     def tokenize(self, text: str) -> list[str]:
         return nltk.tokenize.word_tokenize(text)
 
-    def identity(self, text: str) -> str:
-        return " ".join(text)
+    def identity(self, texts: list[str]) -> str:
+        return [" ".join(text) for text in texts]
 
-    def stem_tokens(self, text_tokens: list[str]) -> str:
-        return " ".join([self.stemmer_.stem(token) for token in text_tokens])
+    def stem_tokens(self, texts_tokens: list[str]) -> str:
+        return [" ".join([self.stemmer_.stem(token) for token in text_tokens])
+                for text_tokens in texts_tokens]
 
-    def lemmatize_tokens(self, text_tokens: list[str]) -> str:
-        pos_tags = nltk.pos_tag(text_tokens)
-        return " ".join([self.lemmatizer_.lemmatize(word, penn_to_wordnet(pos))
-                         for (word, pos) in pos_tags])
+    def lemmatize_tokens(self, texts_tokens: list[str]) -> str:
+        texts_pos_tags = nltk.pos_tag_sents(texts_tokens)
+        return [" ".join([self.lemmatizer_.lemmatize(word, penn_to_wordnet(pos)) for (word, pos) in pos_tags])
+                for pos_tags in texts_pos_tags]
 
     def preprocess_text(self, text: str) -> str:
         text = text.lower()
