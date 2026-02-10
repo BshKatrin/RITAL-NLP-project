@@ -19,5 +19,3 @@ MAIL_PATTERN = re.compile(r"""\b[\w\.]+ # part before @
                           re.IGNORECASE | re.VERBOSE)
 
 PUNCTUATION = punctuation
-STOPWORDS = stopwords.words("english")
-STOPWORDS_NO_PUNC = [w.lower().translate(str.maketrans('', '', punctuation)) for w in STOPWORDS]
