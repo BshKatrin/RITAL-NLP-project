@@ -1,41 +1,24 @@
 
+from abc import ABC, abstractmethod
 from sklearn.base import BaseEstimator, TransformerMixin
-from string import punctuation
 
 import nltk
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem import WordNetLemmatizer
 
-from .preprocess import *
+from src.common.preprocess import *
 
 
-class TextPreprocessor(BaseEstimator, TransformerMixin):
-    def __init__(self, *, stem=False, lemmatize=True, lang="english", stopwords):
+class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
+    def __init__(self, *, stem=False, lemmatize=True, stopwords):
         # In sklearn __init__ method should only assign parameters, can't have any logic
         self.stem = stem
         self.lemmatize = lemmatize
-        self.lang = lang
         self.stopwords = stopwords
 
+    @abstractmethod
     def fit(self, X: list[str], y=None):
-        if self.stem and self.lemmatize:
-            raise ValueError(
-                f"{self.__class__.__name__}: cannot have both `stem` and `lemmatize` set to True."
-            )
-
-        self.stemmer_ = None
-        self.lemmatizer_ = None
-        self._func = self.identity
-
-        if self.stem:
-            self.stemmer_ = SnowballStemmer(self.lang)
-            self._func = self.stem_tokens
-
-        if self.lemmatize:
-            self.lemmatizer_ = WordNetLemmatizer()
-            self._func = self.lemmatize_tokens
-
-        return self
+        pass
 
     def transform(self, X: list[str]) -> list[str]:
         # Clean text
@@ -56,14 +39,13 @@ class TextPreprocessor(BaseEstimator, TransformerMixin):
     def identity(self, texts: list[str]) -> str:
         return [" ".join(text) for text in texts]
 
+    @abstractmethod
     def stem_tokens(self, texts_tokens: list[str]) -> str:
-        return [" ".join([self.stemmer_.stem(token) for token in text_tokens])
-                for text_tokens in texts_tokens]
+        pass
 
+    @abstractmethod
     def lemmatize_tokens(self, texts_tokens: list[str]) -> str:
-        texts_pos_tags = nltk.pos_tag_sents(texts_tokens)
-        return [" ".join([self.lemmatizer_.lemmatize(word, penn_to_wordnet(pos)) for (word, pos) in pos_tags])
-                for pos_tags in texts_pos_tags]
+        pass
 
     def preprocess_text(self, text: str) -> str:
         text = text.lower()

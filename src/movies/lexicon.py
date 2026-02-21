@@ -1,6 +1,4 @@
-from nltk.corpus import stopwords
 import re
-from string import punctuation
 
 URL_PATTERN = re.compile(r"""
                          @?\s*? # optional leading @ 
@@ -18,4 +16,4 @@ MAIL_PATTERN = re.compile(r"""\b[\w\.]+ # part before @
                            """,
                           re.IGNORECASE | re.VERBOSE)
 
-PUNCTUATION = punctuation
+PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'

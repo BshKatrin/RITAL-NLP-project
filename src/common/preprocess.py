@@ -1,4 +1,4 @@
-from .lexicon import URL_PATTERN, MAIL_PATTERN, PUNCTUATION
+from src.movies.lexicon import URL_PATTERN, MAIL_PATTERN, PUNCTUATION
 import re
 from unidecode import unidecode
 from nltk.stem.snowball import SnowballStemmer
@@ -19,14 +19,14 @@ def remove_digits(text: str) -> str:
 
 
 def remove_punctuation(text: str) -> str:
-    return text.lower().translate(str.maketrans('', '', PUNCTUATION))
+    return text.lower().translate(str.maketrans(PUNCTUATION, ' ' * len(PUNCTUATION)))
 
 
 def remove_stopwords(text: str, stopwords) -> str:  # should be called after removing
     return " ".join([word for word in text.split() if word not in stopwords])
 
 
-def normalize_text(text: str) -> str:
+def normalize(text: str) -> str:
     return unidecode(text)
 
 
