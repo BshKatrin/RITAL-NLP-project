@@ -1,4 +1,6 @@
+# project specific
 Dataset/
+tmes/out
 
 # uv
 uv.lock
