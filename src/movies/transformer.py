@@ -5,6 +5,8 @@ import nltk
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem import WordNetLemmatizer
 
+import spacy
+
 from src.common.preprocess import *
 from src.common.transformer_base import TextPreprocessorBase
 
@@ -25,7 +27,7 @@ class TextPreprocessor(TextPreprocessorBase):
             self._func = self.stem_tokens
 
         if self.lemmatize:
-            self.lemmatizer_ = WordNetLemmatizer()
+            self.lemmatizer_ = spacy.load("en_core_web_sm")
             self._func = self.lemmatize_tokens
 
         return self
@@ -35,6 +37,5 @@ class TextPreprocessor(TextPreprocessorBase):
                 for text_tokens in texts_tokens]
 
     def lemmatize_tokens(self, texts_tokens: list[str]) -> str:
-        texts_pos_tags = nltk.pos_tag_sents(texts_tokens)
-        return [" ".join([self.lemmatizer_.lemmatize(word, penn_to_wordnet(pos)) for (word, pos) in pos_tags])
-                for pos_tags in texts_pos_tags]
+        return [" ".join([token.lemma_ for token in self.lemmatizer_(" ".join(tokens))])
+                for tokens in texts_tokens]

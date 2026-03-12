@@ -1,6 +1,8 @@
 # project specific
 Dataset/
 tmes/out
+*.js
+*.css
 
 # uv
 uv.lock
