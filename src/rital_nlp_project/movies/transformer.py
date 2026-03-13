@@ -1,4 +1,3 @@
-
 from sklearn.base import BaseEstimator, TransformerMixin
 
 import nltk
@@ -7,11 +6,17 @@ from nltk.stem import WordNetLemmatizer
 
 import spacy
 
-from src.common.preprocess import *
-from src.common.transformer_base import TextPreprocessorBase
+from rital_nlp_project.common.preprocess import *
+from rital_nlp_project.common.transformer_base import TextPreprocessorBase
+from rital_nlp_project.movies.lexicon import URL_PATTERN, MAIL_PATTERN, PUNCTUATION
 
 
 class TextPreprocessor(TextPreprocessorBase):
+    def __init__(self, *, stem=False, lemmatize=True, stopwords):
+        super().__init__(stem=stem, lemmatize=lemmatize, stopwords=stopwords,
+                         url_pattern=URL_PATTERN, mail_pattern=MAIL_PATTERN, punctuation=PUNCTUATION)
+        self.lang = "english"
+
     def fit(self, X: list[str], y=None):
         if self.stem and self.lemmatize:
             raise ValueError(

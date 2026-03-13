@@ -2,16 +2,15 @@
 import spacy
 from nltk.stem.snowball import FrenchStemmer
 
-from src.common.preprocess import *
-from src.common.transformer_base import TextPreprocessorBase
+from rital_nlp_project.common.preprocess import *
+from rital_nlp_project.common.transformer_base import TextPreprocessorBase
+from rital_nlp_project.presidents.lexicon import PUNCTUATION
 
 
 class TextPreprocessor(TextPreprocessorBase):
-    def __init__(self, *, stem=False, lemmatize=True, stopwords):
+    def __init__(self, *, stem=False, lemmatize=True, stopwords, punctuation=PUNCTUATION):
         # In sklearn __init__ method should only assign parameters, can't have any logic
-        self.stem = stem
-        self.lemmatize = lemmatize
-        self.stopwords = stopwords
+        super().__init__(stem=stem, lemmatize=lemmatize, stopwords=stopwords, punctuation=PUNCTUATION)
 
     def fit(self, X: list[str], y=None):
         if self.stem and self.lemmatize:

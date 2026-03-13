@@ -26,3 +26,15 @@ To download the required NLTK data, run:
 ```bash
 uv run python scripts/setup_nltk.py
 ```
+
+### Spacy models requirements
+
+- en_core_web_sm
+- fr_core_news_md
+
+Possible problems with Jupyter notebooks and uv, run
+
+```
+!{sys.executable} -m spacy download en_core_web_sm
+!{sys.executable} -m spacy download fr_core_news_md
+```

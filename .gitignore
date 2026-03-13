@@ -1,4 +1,7 @@
-# project specific
+# VS code
+.vscode/
+
+# Project specific
 Dataset/
 tmes/out
 *.js

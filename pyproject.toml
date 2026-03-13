@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "gensim>=4.4.0",
+    "ipykernel>=7.2.0",
+    "ipywidgets>=8.1.8",
     "matplotlib>=3.10.8",
+    "nbformat>=4.2.0",
     "nltk>=3.9.2",
     "numpy>=2.4.2",
     "pandas>=3.0.0",
@@ -22,3 +25,11 @@ dependencies = [
     "unidecode>=1.4.0",
     "wordcloud>=1.9.6",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatchling.build.targets.wheel]
+packages = ["rital_nlp_project"]
+package-dir = { "rital_nlp_project" = "src/rital_nlp_project" }
