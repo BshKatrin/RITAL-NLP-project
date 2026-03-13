@@ -4,6 +4,7 @@
 # Project specific
 Dataset/
 notebooks/plots/
+notebooks/out/
 tmes/out
 *.js
 *.css
