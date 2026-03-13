@@ -3,6 +3,7 @@
 
 # Project specific
 Dataset/
+notebooks/plots/
 tmes/out
 *.js
 *.css

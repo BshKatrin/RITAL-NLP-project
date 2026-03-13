@@ -52,4 +52,4 @@ def clean_dataset(load_func: Callable, data_path: str, out_path: str, preprocess
 
 def load_clean_data(path):
     df = pd.read_parquet(path)
-    return df["text"].tolist(), df["label"].tolist()
+    return df["text"].tolist(), df["label"].to_numpy()
