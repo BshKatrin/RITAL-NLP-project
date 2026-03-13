@@ -1,6 +1,9 @@
 import codecs
 import re
 import os
+from typing import Callable
+import pandas as pd
+from pathlib import Path
 
 
 def load_pres(fname):
@@ -36,3 +39,17 @@ def load_movies(path2data):  # 1 classe par répertoire
         cpt += 1  # chg répertoire = cht classe
 
     return alltxts, labs
+
+
+def clean_dataset(load_func: Callable, data_path: str, out_path: str, preprocessor):
+    texts, classes = load_func(data_path)
+    text_preprocessor = preprocessor.fit(texts)
+    texts_cleaned = text_preprocessor.transform(texts)
+
+    df = pd.DataFrame({"text": texts_cleaned, "label": classes})
+    df.to_parquet(Path(out_path).with_suffix(".parquet"), index=False)
+
+
+def load_clean_data(path):
+    df = pd.read_parquet(path)
+    return df["text"].tolist(), df["label"].tolist()
