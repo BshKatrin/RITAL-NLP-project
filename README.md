@@ -38,3 +38,13 @@ Possible problems with Jupyter notebooks and uv, run
 !{sys.executable} -m spacy download en_core_web_sm
 !{sys.executable} -m spacy download fr_core_news_md
 ```
+
+### Cleaning and preprocessing datasets
+
+To preprocess all datasets and save the cleaned data to Parquet files in the `Dataset/` folder, run:
+
+```bash
+uv run -- python3 scripts/clean_all.py
+```
+
+This will generate cleaned `.parquet` files for each dataset in the `Dataset/` directory, ready for downstream analysis or modeling.
