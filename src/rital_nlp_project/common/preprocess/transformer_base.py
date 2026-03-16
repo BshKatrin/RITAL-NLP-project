@@ -1,12 +1,11 @@
-
 from abc import ABC, abstractmethod
-from sklearn.base import BaseEstimator, TransformerMixin
-
-import nltk
-from rital_nlp_project.common.preprocess import *
-
 import re
+
+from sklearn.base import BaseEstimator, TransformerMixin
 from unidecode import unidecode
+import nltk
+
+from rital_nlp_project.common.preprocess import *
 
 
 class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):

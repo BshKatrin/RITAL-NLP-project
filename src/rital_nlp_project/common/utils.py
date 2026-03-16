@@ -1,9 +1,10 @@
-import codecs
-import re
 import os
-from typing import Callable
-import pandas as pd
+import re
+import codecs
 from pathlib import Path
+from typing import Callable
+
+import pandas as pd
 
 
 def load_pres(fname):

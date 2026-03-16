@@ -1,12 +1,10 @@
 import time
 
-from sklearn.model_selection import cross_validate
-from sklearn.metrics import classification_report, get_scorer
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import get_scorer
-
 import numpy as np
 import pandas as pd
+from sklearn.metrics import classification_report, get_scorer
+from sklearn.model_selection import cross_validate
+from sklearn.pipeline import Pipeline
 
 
 def eval_combination_matrix(X, y, vectorizer_list, classifier_list, scoring):
