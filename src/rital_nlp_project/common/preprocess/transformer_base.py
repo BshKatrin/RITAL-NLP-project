@@ -3,10 +3,10 @@ from abc import ABC, abstractmethod
 from sklearn.base import BaseEstimator, TransformerMixin
 
 import nltk
-from nltk.stem.snowball import SnowballStemmer
-from nltk.stem import WordNetLemmatizer
-
 from rital_nlp_project.common.preprocess import *
+
+import re
+from unidecode import unidecode
 
 
 class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
@@ -53,10 +53,30 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
 
     def preprocess_text(self, text: str) -> str:
         text = text.lower()
-        text = remove_emails(text, self.mail_pattern)
-        text = remove_urls(text, self.url_pattern)
-        text = remove_digits(text)
-        text = remove_punctuation(text, self.punctuation)
-        text = normalize(text)
-        text = remove_stopwords(text, self.stopwords)
+        text = self.remove_emails(text, self.mail_pattern)
+        text = self.remove_urls(text, self.url_pattern)
+        text = self.remove_digits(text)
+        text = self.remove_punctuation(text, self.punctuation)
+        text = self.normalize(text)
+        text = self.remove_stopwords(text, self.stopwords)
         return text
+
+    def remove_emails(self, text: str, pattern: str) -> str:
+        return re.sub(pattern, ' ', text) if pattern else text
+
+    def remove_urls(self, text: str, pattern: str) -> str:
+        return re.sub(pattern, ' ', text) if pattern else text
+
+    def remove_digits(self, text: str) -> str:
+        return re.sub(r'[0-9]+', '', text)
+
+    def remove_punctuation(self, text: str, punctuation: str) -> str:
+        return text.lower().translate(str.maketrans(punctuation, ' ' * len(punctuation)))
+
+    def remove_stopwords(self, text: str, stopwords, apply_unidecode: bool = False) -> str:
+        def normalize(word):
+            return unidecode(word) if apply_unidecode else word
+        return " ".join([word for word in text.split() if normalize(word) not in stopwords])
+
+    def normalize(self, text: str) -> str:
+        return unidecode(text)

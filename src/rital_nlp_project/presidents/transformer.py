@@ -1,9 +1,9 @@
 
-import spacy
 from nltk.stem.snowball import FrenchStemmer
+import spacy
 
 from rital_nlp_project.common.preprocess import *
-from rital_nlp_project.common.transformer_base import TextPreprocessorBase
+from rital_nlp_project.common.preprocess.transformer_base import TextPreprocessorBase
 from rital_nlp_project.presidents.lexicon import PUNCTUATION
 
 

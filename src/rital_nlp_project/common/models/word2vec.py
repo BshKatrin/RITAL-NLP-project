@@ -1,7 +1,7 @@
+import numpy as np
+
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import TruncatedSVD
-
-import numpy as np
 
 
 class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):

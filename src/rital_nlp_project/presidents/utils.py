@@ -1,6 +1,6 @@
+import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from sklearn.model_selection import PredefinedSplit
-import numpy as np
 
 
 def concat_seq_by_class(texts, classes, n=None):

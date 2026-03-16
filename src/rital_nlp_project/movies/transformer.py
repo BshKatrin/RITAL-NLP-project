@@ -1,14 +1,8 @@
-from sklearn.base import BaseEstimator, TransformerMixin
-
-import nltk
 from nltk.stem.snowball import SnowballStemmer
-from nltk.stem import WordNetLemmatizer
-
 import spacy
 
-from rital_nlp_project.common.preprocess import *
-from rital_nlp_project.common.transformer_base import TextPreprocessorBase
-from rital_nlp_project.movies.lexicon import URL_PATTERN, MAIL_PATTERN, PUNCTUATION
+from rital_nlp_project.common.preprocess.transformer_base import TextPreprocessorBase
+from rital_nlp_project.movies.lexicon import MAIL_PATTERN, PUNCTUATION, URL_PATTERN
 
 
 class TextPreprocessor(TextPreprocessorBase):

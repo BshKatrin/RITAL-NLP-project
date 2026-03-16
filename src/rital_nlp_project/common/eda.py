@@ -1,8 +1,7 @@
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
 import numpy as np
 import pandas as pd
-from scipy.stats import contingency
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
 
 
 def plot_class_wordclouds(classes, matrix, vocab):
