@@ -37,5 +37,5 @@ class TextPreprocessor(TextPreprocessorBase):
                 for text_tokens in texts_tokens]
 
     def lemmatize_tokens(self, texts_tokens: list[str]) -> str:
-        return [" ".join([token.lemma_ for token in self.lemmatizer_(" ".join(tokens))])
+        return [" ".join([token.lemma_.lower() for token in self.lemmatizer_(" ".join(tokens))])
                 for tokens in texts_tokens]

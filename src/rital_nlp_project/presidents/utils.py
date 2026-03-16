@@ -1,30 +1,41 @@
 from scipy.ndimage import gaussian_filter1d
+from sklearn.model_selection import PredefinedSplit
 import numpy as np
 
 
-def concat_seq_by_class(texts, classes, n=20):
+def concat_seq_by_class(texts, classes, n=None):
     """
     Concatenate at most n consecutive texts of the same class into one.
-    If n > 20, runs will still be split every 20 items (i.e. effective max = min(n, 20)).
 
     Args:
         texts (list of str): List of text strings.
         classes (list of int): List of class labels (same length as texts).
         n (int): Maximum number of consecutive phrases to combine (must be >= 1).
+        If None, the limit is not set.
 
     Returns:
         tuple: (new_texts, new_classes)
             new_texts (list of str): Concatenated texts.
             new_classes (list of int): Corresponding class labels.
     """
+
+    # new_texts = [texts[0]]
+    # new_classes = [classes[0]]
+    # for t, c in zip(texts[1:], classes[1:]):
+    #     if c == new_classes[-1]:
+    #         new_texts[-1] += " " + t
+    #     else:
+    #         new_texts.append(t)
+    #         new_classes.append(c)
+    # return new_texts, new_classes
     if not texts:
         return [], []
     if len(texts) != len(classes):
         raise ValueError("texts and classes must have the same length")
-    if n < 1:
+    if n and n < 1:
         raise ValueError("n must be >= 1")
 
-    max_block = min(n, 20)
+    max_block = n
     new_texts = []
     new_classes = []
     i = 0
@@ -38,7 +49,7 @@ def concat_seq_by_class(texts, classes, n=20):
         # split the run [i, j) into blocks of size <= max_block
         start = i
         while start < j:
-            end = min(start + max_block, j)
+            end = min(start + max_block, j) if max_block else j
             new_texts.append(" ".join(texts[start:end]))
             new_classes.append(curr_class)
             start = end
@@ -52,3 +63,18 @@ def smooth_predictions(proba, sigma=1.0):
     """
     smoothed = gaussian_filter1d(proba, sigma=sigma, axis=0)
     return np.clip(smoothed, 0, 1)
+
+
+def split_for_cv(classes, n_splits):
+    unique_speakers = np.unique(classes)
+    fold_ids = np.zeros(len(classes), dtype=int)
+
+    for s in unique_speakers:
+        idx = np.where(classes == s)[0]
+        blocks = np.array_split(idx, n_splits)
+        for k, b in enumerate(blocks):
+            fold_ids[b] = k
+
+    # to iterate (cv) : for train_idx, test_idx in .split()
+    # for train/test : train_idx, test = next(.split())
+    return PredefinedSplit(test_fold=fold_ids)
