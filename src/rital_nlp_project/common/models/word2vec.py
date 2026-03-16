@@ -1,6 +1,7 @@
 from sklearn.base import BaseEstimator, TransformerMixin
-import numpy as np
 from sklearn.decomposition import TruncatedSVD
+
+import numpy as np
 
 
 class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
@@ -34,6 +35,9 @@ class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
         else:
             raise ValueError(f"Unknown pooling: {self.pooling}")
 
+    def __repr__(self):
+        return f"Word2VecPoolingTransformer(pooling={self.pooling})"
+
     def mean_pooling(self, model, texts):
         return np.array([np.mean([model[word] for word in text.split() if word in model], axis=0)
                          for text in texts])
@@ -42,9 +46,8 @@ class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
         return np.array([np.max([model[word] for word in text.split() if word in model], axis=0)
                         for text in texts])
 
-    # Mean, max concatenation
-
     def mean_max_pooling(self, model, texts):
+        # Mean, max concatenation
         mean_pool = self.mean_pooling(model, texts)
         max_pool = self.max_pooling(model, texts)
         return np.concatenate([mean_pool, max_pool], axis=1)
@@ -62,7 +65,6 @@ class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
             if not valid_words:
                 embeddings.append(np.zeros(model.vector_size))
                 continue
-            # print(valid_words)
 
             words, weights = zip(*valid_words)
             words_vecs = np.array([model[w] for w in words])
@@ -95,6 +97,8 @@ class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
             embeddings.append(weighted_avg)
 
         embeddings = np.array(embeddings)
-        svd = TruncatedSVD(n_components=1, n_iter=7, random_state=0)
+
+        # recommended
+        svd = TruncatedSVD(n_components=1, n_iter=7, random_state=42)
         u = svd.fit(embeddings).components_[0]
         return embeddings - embeddings.dot(u.reshape(-1, 1)) * u
