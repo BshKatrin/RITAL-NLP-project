@@ -1,8 +1,10 @@
 import time
 
-from sklearn.model_selection import cross_val_score
-from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.model_selection import cross_val_score, cross_validate
+from sklearn.metrics import accuracy_score, classification_report, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
+from sklearn.utils.class_weight import compute_sample_weight
+
 
 import numpy as np
 import pandas as pd
@@ -41,15 +43,24 @@ def eval_combination_matrix(X_train, y_train, X_test, y_test, vectorizer_list, c
     return pd.DataFrame(results)
 
 
-def eval_pipeline(X_train, y_train, X_test, y_test, pipeline, clf_report: bool = False):
+def eval_pipeline(X, y, X_train, y_train, X_test, y_test, pipeline, clf_report: bool = False):
     # Pipeline desc
     print("Pipeline steps:")
     for name, step in pipeline.named_steps.items():
         print(f"  {name}: {step}")
 
+    scoring = {
+        'accuracy': 'accuracy',                  # built-in string
+        'f1': "f1",
+        'roc_auc': 'roc_auc'                     # built-in string
+    }
+
     # Cross validation
-    scores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring="f1")
-    print(f"Scores : {scores}, mean score : {np.mean(scores)}")
+    scores = cross_validate(pipeline, X, y, scoring=scoring)
+
+    print(f"Cross-validation F1 scores: {scores["test_f1"]}, mean: {np.mean(scores["test_f1"]):.4f}")
+    print(f"Cross-validation Accuracy scores: {scores["test_accuracy"]}, mean: {np.mean(scores["test_accuracy"]): .4f}")
+    print(f"Cross-validation AUC scores: {scores["test_roc_auc"]}, mean: {np.mean(scores["test_roc_auc"]):.4f}")
 
     # Training time
     t0 = time.time()
@@ -64,7 +75,14 @@ def eval_pipeline(X_train, y_train, X_test, y_test, pipeline, clf_report: bool =
     print(f"Inference time: {infer_time:.3f} seconds")
 
     print("Vocabulary size:", len(pipeline.named_steps["vectorizer"].vocabulary_))
-    print("Train/test accuracy score:", f1_score(y_test, predictions))
+    acc = accuracy_score(y_test, predictions)
+    f1 = f1_score(y_test, predictions)
+    auc = roc_auc_score(y_test, predictions)
+
+    print(f"Test Accuracy: {acc:.4f}")
+    print(f"Test F1-score: {f1:.4f}")
+    print(f"Test ROC-AUC: {auc:.4f}")
+
     if clf_report:
         print(classification_report(y_test, predictions))
     print()
