@@ -31,7 +31,7 @@ def split_fn(X, y):
     return X_train, X_test, y_train, y_test
 
 
-def smooth_predictions(proba, sigma=1.0):
+def smooth_gauss(proba, sigma=1.0):
     """
     Gaussian smoothing for sequential data.
     """
@@ -39,20 +39,22 @@ def smooth_predictions(proba, sigma=1.0):
     return np.clip(smoothed, 0, 1)
 
 
-class SmoothedProbaClassifier(BaseEstimator, ClassifierMixin):
+class SmoothedProbaClassifier(ClassifierMixin, BaseEstimator):
+    _estimator_type = "classifier"
+
     def __init__(self, base_estimator, sigma=1.0):
         self.base_estimator = base_estimator
         self.sigma = sigma
 
     def fit(self, X, y):
-        self.estimator_ = clone(self.base_estimator)
-        self.estimator_.fit(X, y)
-        self.classes_ = self.estimator_.classes_
+        self._inner = clone(self.base_estimator)
+        self._inner.fit(X, y)
+        self.classes_ = self._inner.classes_
         return self
 
     def predict_proba(self, X):
-        proba = self.estimator_.predict_proba(X)
-        smoothed = smooth_predictions(proba, sigma=self.sigma)
+        proba = self._inner.predict_proba(X)
+        smoothed = smooth_gauss(proba, sigma=self.sigma)
         row_sums = smoothed.sum(axis=1, keepdims=True)
         row_sums[row_sums == 0] = 1.0
         return smoothed / row_sums
@@ -62,6 +64,7 @@ class SmoothedProbaClassifier(BaseEstimator, ClassifierMixin):
         return self.classes_[np.argmax(proba, axis=1)]
 
     def decision_function(self, X):
-        if not hasattr(self.estimator_, "decision_function"):
-            raise AttributeError("base_estimator has no decision_function")
-        return self.estimator_.decision_function(X)
+        return self._inner.decision_function(X)
+
+    # def __sklearn_is_fitted__(self):
+    #     return hasattr(self, "_inner")

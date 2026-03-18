@@ -6,5 +6,6 @@ scoring = {
     'accuracy': 'accuracy',
     'precision': 'precision',
     'recall': 'recall',
-    'f1': 'f1'
+    'f1': 'f1',
+    'roc_auc': 'roc_auc'
 }
