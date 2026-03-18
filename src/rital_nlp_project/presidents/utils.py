@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.model_selection import PredefinedSplit
 
 
@@ -78,3 +79,31 @@ def split_for_cv(classes, n_splits):
     # to iterate (cv) : for train_idx, test_idx in .split()
     # for train/test : train_idx, test = next(.split())
     return PredefinedSplit(test_fold=fold_ids)
+
+
+class SmoothedProbaClassifier(BaseEstimator, ClassifierMixin):
+    def __init__(self, base_estimator, sigma=1.0):
+        self.base_estimator = base_estimator
+        self.sigma = sigma
+
+    def fit(self, X, y):
+        self.estimator_ = clone(self.base_estimator)
+        self.estimator_.fit(X, y)
+        self.classes_ = self.estimator_.classes_
+        return self
+
+    def predict_proba(self, X):
+        proba = self.estimator_.predict_proba(X)
+        smoothed = smooth_predictions(proba, sigma=self.sigma)
+        row_sums = smoothed.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1.0
+        return smoothed / row_sums
+
+    def predict(self, X):
+        proba = self.predict_proba(X)
+        return self.classes_[np.argmax(proba, axis=1)]
+
+    def decision_function(self, X):
+        if not hasattr(self.estimator_, "decision_function"):
+            raise AttributeError("base_estimator has no decision_function")
+        return self.estimator_.decision_function(X)

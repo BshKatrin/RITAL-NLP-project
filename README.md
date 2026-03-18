@@ -61,4 +61,5 @@ To set up these environments, run:
 ```
 uv sync --project envs/py313
 uv sync --project envs/py314
+uv pip install -e .
 ```
