@@ -152,6 +152,7 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.py313-base
 env/
 venv/
 ENV/

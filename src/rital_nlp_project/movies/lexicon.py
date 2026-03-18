@@ -1,4 +1,5 @@
 import re
+PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 
 URL_PATTERN = re.compile(r"""
                          @?\s*? # optional leading @ 
@@ -16,4 +17,11 @@ MAIL_PATTERN = re.compile(r"""\b[\w\.]+ # part before @
                            """,
                           re.IGNORECASE | re.VERBOSE)
 
-PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+
+PHONE_PATTERN = re.compile(r"""
+                            (?<!\w)              # not preceded by a word char
+                            (?:\+?\d{1,3}[\s\-\.]?)?  # optional country code, like +33, +1, 0044
+                            (?:\(?\d{2,4}\)?[\s\-\.]?) # area code, with or without ()
+                            (?:\d[\s\-\.]?){6,10}      # remaining digits
+                            (?!\w)               # not followed by a word char
+                            """)

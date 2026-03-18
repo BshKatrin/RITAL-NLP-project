@@ -44,9 +44,9 @@ def load_movies(path2data):  # 1 classe par répertoire
 
 def clean_dataset(load_func: Callable, data_path: str, out_path: str, preprocessor):
     texts, classes = load_func(data_path)
+    texts, classes = texts, classes
     text_preprocessor = preprocessor.fit(texts)
     texts_cleaned = text_preprocessor.transform(texts)
-
     df = pd.DataFrame({"text": texts_cleaned, "label": classes})
     df.to_parquet(Path(out_path).with_suffix(".parquet"), index=False)
 
