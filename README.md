@@ -48,3 +48,17 @@ uv run -- python3 scripts/clean_all.py
 ```
 
 This will generate cleaned `.parquet` files for each dataset in the `Dataset/` directory, ready for downstream analysis or modeling.
+
+### Installation
+
+This project utilizes two virtual environments managed by `uv`:
+
+- **Python 3.13 environment**: Dedicated to running `gensim`, which is specifically required for the `notebooks/dim_reduction.ipynb` notebook.
+- **Python 3.14 environment**: Serves as the primary environment, featuring `pytorch` with CUDA 13.0 support.
+
+To set up these environments, run:
+
+```
+uv sync --project envs/py313
+uv sync --project envs/py314
+```
