@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import TruncatedSVD
 
 
-class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
+class WordEmbeddingsPoolingTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, model, pooling='mean', vectorizer=None):
         self.model = model
         self.pooling = pooling
@@ -36,7 +36,7 @@ class Word2VecPoolingTransformer(BaseEstimator, TransformerMixin):
             raise ValueError(f"Unknown pooling: {self.pooling}")
 
     def __repr__(self):
-        return f"Word2VecPoolingTransformer(pooling={self.pooling})"
+        return f"WordEmbeddingsPoolingTransformer(pooling={self.pooling})"
 
     def mean_pooling(self, model, texts):
         return np.array([np.mean([model[word] for word in text.split() if word in model], axis=0)

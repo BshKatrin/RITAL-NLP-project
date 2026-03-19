@@ -6,6 +6,11 @@ from sklearn.metrics import classification_report, get_scorer
 from sklearn.model_selection import cross_validate
 from sklearn.pipeline import Pipeline
 
+EXPERIMENTS = {
+    "movies": [],
+    "presidents": []
+}
+
 
 def eval_combination_matrix(X, y, vectorizer_list, classifier_list, scoring):
     results = []
@@ -137,3 +142,32 @@ def eval_pipeline_presidents(
         scoring=scoring,
         clf_report=clf_report,
     )
+
+
+def add_experiments(get_vects_fn, compatibility, classifiers):
+    res = []
+    for vect_type, vects in get_vects_fn().items():
+        for vect_name, vect in vects:
+            for clf_key in compatibility[vect_type]:
+
+                clf = classifiers[clf_key]
+                name = f"{vect_name}__{clf_key}"
+
+                pipeline = Pipeline([
+                    ("vect", vect),
+                    ("clf", clf)
+                ])
+
+                res.append({
+                    "name": name,
+                    "pipeline": pipeline
+                })
+    return res
+
+
+def build_experiments():
+    from rital_nlp_project.movies.models_config import get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS
+    EXPERIMENTS["movies"] = add_experiments(get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS)
+
+    from rital_nlp_project.presidents.models_config import get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS
+    EXPERIMENTS["presidents"] = add_experiments(get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS)
