@@ -1,6 +1,3 @@
-from nltk.stem.snowball import SnowballStemmer
-import spacy
-
 from rital_nlp_project.common.preprocess.transformer_base import TextPreprocessorBase
 from rital_nlp_project.movies.lexicon import MAIL_PATTERN, PUNCTUATION, URL_PATTERN, PHONE_PATTERN
 

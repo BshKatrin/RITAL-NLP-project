@@ -1,13 +1,14 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 import re
 
 from sklearn.base import BaseEstimator, TransformerMixin
-import spacy
+try:
+    import spacy
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    spacy = None
 from unidecode import unidecode
 import nltk
 from nltk.stem.snowball import SnowballStemmer
-
-from rital_nlp_project.common.preprocess import *
 
 
 class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
@@ -37,10 +38,10 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
 
     def fit(self, X: list[str], y=None):
         self.special_tokens_mode_ = "tokens" if self.pipeline_mode == "bert" else "space"
-        self.lemmatize = False if self.pipeline_mode == "bert" else self.lemmatize
-        self.stem = False if self.pipeline_mode == "bert" else self.stem
+        self.use_lemmatize_ = False if self.pipeline_mode == "bert" else self.lemmatize
+        self.use_stem_ = False if self.pipeline_mode == "bert" else self.stem
 
-        if self.stem and self.lemmatize:
+        if self.use_stem_ and self.use_lemmatize_:
             raise ValueError(
                 f"{self.__class__.__name__}: cannot have both `stem` and `lemmatize` set to True."
             )
@@ -48,22 +49,30 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
         self.stemmer_ = None
         self.lemmatizer_ = None
         self._func = None
+        self.stopwords_ = {self._normalize_token(word) for word in self.stopwords}
 
-        if self.stem:
+        if self.use_stem_:
             self.stemmer_ = self._get_stemmer()
             self._func = self.stem_tokens
 
-        if self.lemmatize:
+        if self.use_lemmatize_:
             self.lemmatizer_ = self._get_lemmatizer()
             self._func = self.lemmatize_tokens
         return self
 
     def _get_lemmatizer(self):
-        if self.lang == "french":
-            return spacy.load("fr_core_news_md")
-
-        # english
-        return spacy.load("en_core_web_sm")
+        if spacy is None:
+            raise ModuleNotFoundError(
+                "spaCy is not installed. Install it before running lemmatization."
+            )
+        model_name = "fr_core_news_md" if self.lang == "french" else "en_core_web_sm"
+        try:
+            return spacy.load(model_name)
+        except OSError as exc:
+            raise OSError(
+                f"spaCy model {model_name!r} is not installed. "
+                "Install it before running preprocessing."
+            ) from exc
 
     def _get_stemmer(self):
         return SnowballStemmer(self.lang)
@@ -77,14 +86,22 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
             texts = [self.tokenize(text) for text in texts]
 
             # Standardize
-            texts = self._func(texts) if self._func else texts
+            texts = self._func(texts) if self._func else self.identity(texts)
         return texts
 
     def tokenize(self, text: str) -> list[str]:
-        return nltk.tokenize.word_tokenize(text)
+        try:
+            return nltk.tokenize.word_tokenize(text)
+        except LookupError as exc:
+            raise LookupError(
+                "NLTK punkt tokenizer data is missing. Run scripts/setup_nltk.py first."
+            ) from exc
 
-    # def identity(self, texts: list[str]) -> str:
-    #     return [" ".join(text) for text in texts]
+    def identity(self, texts: list[list[str]]) -> list[str]:
+        return [" ".join(text) for text in texts]
+
+    def _normalize_token(self, token: str) -> str:
+        return unidecode(token.lower())
 
     def stem_tokens(self, texts_tokens: list[str]) -> str:
         return [" ".join([self.stemmer_.stem(token) for token in text_tokens])
@@ -111,7 +128,7 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
         text = self.remove_digits(text)
         text = self.remove_punctuation(text, self.punctuation)
         text = self.normalize(text)
-        text = self.remove_stopwords(text, self.stopwords)
+        text = self.remove_stopwords(text, self.stopwords_)
         return text
 
     def _preprocess_bert(self, text: str) -> str:
@@ -151,7 +168,11 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
 
     def remove_stopwords(self, text: str, stopwords, apply_unidecode: bool = False) -> str:
         def normalize(word):
-            return unidecode(word) if apply_unidecode else word
+            normalized = self._normalize_token(word)
+            if apply_unidecode:
+                return normalized
+            return normalized
+
         return " ".join([word for word in text.split() if normalize(word) not in stopwords])
 
     def normalize(self, text: str) -> str:

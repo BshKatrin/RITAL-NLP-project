@@ -2,8 +2,8 @@ import nltk
 
 REQUIRED = [
     "punkt",
+    "punkt_tab",
     "stopwords",
-    "PorterStemmer",
 ]
 
 # Other packages that might be interesting
