@@ -1,15 +1,13 @@
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 
-from rital_nlp_project.common.models.word_embeds import WordEmbeddingsPoolingTransformer
-
-# TODO: define LSA for for tfidf, bow
-# TODO: write now model parameter in fasttext is broken. Fix it
+from rital_nlp_project.common.models.utils import make_lsa_vectorizer, get_word_embed_vectorizers
 
 max_df = 0.5
 min_df = 5
+max_features = 10000
 cv_n_splits = 5
 random_state = 42
 test_size = 0.2
@@ -24,43 +22,41 @@ scoring = {
     'roc_auc': 'roc_auc'
 }
 
+
 COUNT_LIKE_VECTORIZERS = [
-    ("char_1gram_count", TfidfVectorizer(use_idf=False, analyzer="char", ngram_range=(1, 1))),
-    ("word_1gram_count", TfidfVectorizer(use_idf=False, analyzer="word", ngram_range=(1, 1))),
+    ("char_1gram_count", TfidfVectorizer(use_idf=False, analyzer="char", ngram_range=(1, 1), max_features=max_features)),
+    ("char_4gram_count", TfidfVectorizer(use_idf=False, analyzer="char_wb", ngram_range=(4, 4), max_features=max_features)),
+    ("word_1gram_count", TfidfVectorizer(use_idf=False, analyzer="word", ngram_range=(1, 1), max_features=max_features)),
+    ("word_13gram_count", TfidfVectorizer(use_idf=False, analyzer="word", ngram_range=(1, 3), max_features=max_features)),
+]
+
+COUNT_LIKE_LSA_VECTORIZERS = [
+    ("char_4gram_count_lsa", make_lsa_vectorizer(TfidfVectorizer(use_idf=False, analyzer="char_wb", ngram_range=(4, 4)))),
+    ("word_1gram_count_lsa", make_lsa_vectorizer(TfidfVectorizer(use_idf=False, analyzer="word", ngram_range=(1, 1)))),
+    ("word_13gram_count_lsa", make_lsa_vectorizer(TfidfVectorizer(use_idf=False, analyzer="word", ngram_range=(1, 3)))),
 ]
 
 TFIDF_VECTORIZERS = [
-    ("word_1gram_tfidf", TfidfVectorizer(analyzer="word", ngram_range=(1, 1))),
-    ("word_13gram_tfidf", TfidfVectorizer(analyzer="word", ngram_range=(1, 3))),
+    ("char_4gram_tfidf", TfidfVectorizer(analyzer="char_wb", ngram_range=(4, 4), max_features=max_features)),
+    ("word_1gram_tfidf", TfidfVectorizer(analyzer="word", ngram_range=(1, 1), max_features=max_features)),
+    ("word_13gram_tfidf", TfidfVectorizer(analyzer="word", ngram_range=(1, 3), max_features=max_features)),
 ]
 
-
-def get_word_embed_vectorizers(model):
-    return [
-        ("w2v_mean", WordEmbeddingsPoolingTransformer(model, pooling="mean")),
-        ("w2v_max", WordEmbeddingsPoolingTransformer(model, pooling="max")),
-        ("w2v_mean_max", WordEmbeddingsPoolingTransformer(model, pooling="mean_max")),
-        ("w2v_tfidf",
-         WordEmbeddingsPoolingTransformer(
-             model,
-             pooling="tfidf",
-             vectorizer=TfidfVectorizer(min_df=min_df, max_df=max_df)
-         )),
-        ("w2v_sif",
-         WordEmbeddingsPoolingTransformer(
-             model,
-             pooling="sif",
-             vectorizer=CountVectorizer(min_df=min_df, max_df=max_df)
-         )),
-    ]
+TFIDF_LSA_VECTORIZERS = [
+    ("char_4gram_tfidf_lsa", make_lsa_vectorizer(TfidfVectorizer(analyzer="char_wb", ngram_range=(4, 4)))),
+    ("word_1gram_tfidf_lsa", make_lsa_vectorizer(TfidfVectorizer(analyzer="word", ngram_range=(1, 1)))),
+    ("word_13gram_tfidf_lsa", make_lsa_vectorizer(TfidfVectorizer(analyzer="word", ngram_range=(1, 3)))),
+]
 
 
 COMPATIBILITY = {
     "count": ["nb", "logreg", "svm"],
+    "count_lsa": ["logreg", "svm"],
     "tfidf": ["logreg", "svm"],
+    "tfidf_lsa": ["logreg", "svm"],
     "word2vec": ["logreg", "svm"],
     "fasttext": ["logreg", "svm"],
-    "cls": ["logreg", "svm"]
+    "cls": ["logreg", "svm"]  # refers to CLS embedding
 }
 
 CLASSIFIERS = {
@@ -70,48 +66,14 @@ CLASSIFIERS = {
 }
 
 
-def get_vectorizers_by_type():
+def get_vectorizers_by_type(models):
+
     vectorizers_by_type = {
         "count": COUNT_LIKE_VECTORIZERS,
+        "count_lsa": COUNT_LIKE_LSA_VECTORIZERS,
         "tfidf": TFIDF_VECTORIZERS,
-        "word2vec": get_word_embed_vectorizers(word2vec_model),
-        "fasttext": get_word_embed_vectorizers(fasttext_model)
+        "tfidf_lsa": TFIDF_LSA_VECTORIZERS,
+        "word2vec": get_word_embed_vectorizers(models.get("word2vec", None)),
+        "fasttext": get_word_embed_vectorizers(models.get("fasttext", None))
     }
     return vectorizers_by_type
-
-
-# def build_experiment_specs(
-#     dataset_name,
-#     *,
-#     word2vec_model=None,
-# ):
-#     vectorizers_by_type = get_vectorizers_by_type(word2vec_model=word2vec_model)
-#     active_types = enabled_vectorizer_types or list(vectorizers_by_type.keys())
-#     active_classifiers = set(enabled_classifiers) if enabled_classifiers else None
-
-#     experiments = []
-
-#     for vect_type in active_types:
-#         if vect_type not in vectorizers_by_type:
-#             continue
-
-#         allowed_clf_keys = COMPATIBILITY.get(vect_type, [])
-
-#         for vect_name, vect in vectorizers_by_type[vect_type]:
-#             for clf_key in allowed_clf_keys:
-#                 if clf_key not in CLASSIFIERS:
-#                     continue
-#                 if active_classifiers is not None and clf_key not in active_classifiers:
-#                     continue
-
-#                 experiments.append({
-#                     "dataset": dataset_name,
-#                     "vect_type": vect_type,
-#                     "vect_name": vect_name,
-#                     "clf_key": clf_key,
-#                     "name": f"{dataset_name}__{vect_name}__{clf_key}",
-#                     "vectorizer": vect,
-#                     "classifier": CLASSIFIERS[clf_key],
-#                 })
-
-#     return experiments

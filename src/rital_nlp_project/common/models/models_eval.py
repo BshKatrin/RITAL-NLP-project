@@ -6,11 +6,6 @@ from sklearn.metrics import classification_report, get_scorer
 from sklearn.model_selection import cross_validate
 from sklearn.pipeline import Pipeline
 
-EXPERIMENTS = {
-    "movies": [],
-    "presidents": []
-}
-
 
 def eval_combination_matrix(X, y, vectorizer_list, classifier_list, scoring):
     results = []
@@ -40,16 +35,8 @@ def eval_pipeline(
     scoring,
     clf_report: bool = False,
 ):
-
+    print(pipeline)
     results = {}
-
-    if hasattr(pipeline, "named_steps"):
-        for name, step in pipeline.named_steps.items():
-            print(f"  {name}: {step}")
-            results[name] = step
-    else:
-        print(f"  model: {pipeline}")
-        results["model"] = pipeline
 
     if cv_fn is not None:
         cv = cv_fn(X, y)
@@ -57,7 +44,6 @@ def eval_pipeline(
         for score_name in scoring:
             mean_value = float(np.mean(scores["test_" + score_name]))
             results["cv_" + score_name] = mean_value
-            print(f"Cross-validation {score_name} mean: {mean_value:.4f}")
 
     if split_fn is not None:
         split_out = split_fn(X, y)
@@ -67,23 +53,28 @@ def eval_pipeline(
         t0 = time.time()
         pipeline.fit(X_train, y_train)
         train_time = time.time() - t0
-        print(f"Training time: {train_time:.3f} seconds")
+        results["train_train_time"] = train_time
 
         # Inference time
         t0 = time.time()
         predictions = pipeline.predict(X_test)
         infer_time = time.time() - t0
-        print(f"Inference time: {infer_time:.3f} seconds")
+
+        results["test_infer_time"] = infer_time
 
         for score_name in scoring:
             scorer = get_scorer(scoring[score_name])
             score_value = scorer(pipeline, X_test, y_test)
             results[score_name] = score_value
-            print(f"Test {score_name}: {score_value:.4f}")
+
+        vectorizer = pipeline.named_steps["vect"]
+        vocab_size = None
+        if hasattr(vectorizer, "get_feature_names_out"):
+            vocab_size = len(vectorizer.get_feature_names_out())
+        results["train_vocab_size"] = vocab_size
 
         if clf_report:
             print(classification_report(y_test, predictions))
-        print()
 
     return results
 
@@ -103,9 +94,9 @@ def eval_pipeline_movies(
     split_fn = None
 
     if cv:
-        from rital_nlp_project.movies.models import cv_fn
+        from rital_nlp_project.movies.models_utils import cv_fn
     if split:
-        from rital_nlp_project.movies.models import split_fn
+        from rital_nlp_project.movies.models_utils import split_fn
 
     return eval_pipeline(
         pipeline, X, y,
@@ -131,9 +122,9 @@ def eval_pipeline_presidents(
     split_fn = None
 
     if cv:
-        from rital_nlp_project.presidents.models import cv_fn
+        from rital_nlp_project.presidents.models_utils import cv_fn
     if split:
-        from rital_nlp_project.presidents.models import split_fn
+        from rital_nlp_project.presidents.models_utils import split_fn
 
     return eval_pipeline(
         pipeline, X, y,
@@ -144,9 +135,12 @@ def eval_pipeline_presidents(
     )
 
 
-def add_experiments(get_vects_fn, compatibility, classifiers):
+def add_experiments(vects, compatibility, classifiers):
     res = []
-    for vect_type, vects in get_vects_fn().items():
+    for vect_type, vects in vects.items():
+        if vects is None:
+            continue
+
         for vect_name, vect in vects:
             for clf_key in compatibility[vect_type]:
 
@@ -165,9 +159,42 @@ def add_experiments(get_vects_fn, compatibility, classifiers):
     return res
 
 
-def build_experiments():
-    from rital_nlp_project.movies.models_config import get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS
-    EXPERIMENTS["movies"] = add_experiments(get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS)
+def build_experiments(dataset, models=None):
+    models = models or {}
+    exps = {}
 
-    from rital_nlp_project.presidents.models_config import get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS
-    EXPERIMENTS["presidents"] = add_experiments(get_vectorizers_by_type, COMPATIBILITY, CLASSIFIERS)
+    if dataset == "movies":
+        from rital_nlp_project.movies.models_config import (
+            get_vectorizers_by_type,
+            COMPATIBILITY,
+            CLASSIFIERS,
+        )
+    elif dataset == "presidents":
+        from rital_nlp_project.presidents.models_config import (
+            get_vectorizers_by_type,
+            COMPATIBILITY,
+            CLASSIFIERS,
+        )
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+
+    vects = get_vectorizers_by_type(models)
+    return add_experiments(vects, COMPATIBILITY, CLASSIFIERS)
+
+
+def eval_experiments(experiments,
+                     X,
+                     y,
+                     *,
+                     eval_pipeline_fn,
+                     cv: bool = False,
+                     split: bool = False,
+                     clf_report: bool = False
+                     ):
+
+    eval_report = dict()
+    for exp in experiments:
+        pipe_name = exp["name"]
+        pipe = exp["pipeline"]
+        eval_report[pipe_name] = eval_pipeline_fn(pipe, X, y, cv=cv, split=split, clf_report=clf_report)
+    return pd.DataFrame(eval_report).T.rename_axis("pipeline").reset_index()

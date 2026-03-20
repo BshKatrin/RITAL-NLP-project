@@ -5,6 +5,7 @@ from sklearn.decomposition import TruncatedSVD
 
 
 class WordEmbeddingsPoolingTransformer(BaseEstimator, TransformerMixin):
+    # Static word embeddings (w2v, fasttext)
     def __init__(self, model, pooling='mean', vectorizer=None):
         self.model = model
         self.pooling = pooling
