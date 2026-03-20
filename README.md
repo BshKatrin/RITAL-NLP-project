@@ -63,3 +63,10 @@ uv sync --project envs/py313
 uv sync --project envs/py314
 uv pip install -e .
 ```
+
+### Downloading `fasttext` models
+
+To download and unpack 2 pretrained fasttext models `cc.en.300.bin` and `cc.fr.300.bin`, run
+`uv run --active python3 scripts/download_fasttext.py`. Both files will be saved to `models` folder.
+
+**Attention** : after unpacking, both models are 14.5GB in size.

@@ -6,6 +6,8 @@ from sklearn.svm import LinearSVC
 from rital_nlp_project.common.models.word_embeds import WordEmbeddingsPoolingTransformer
 from rital_nlp_project.presidents.models import SmoothedProbaClassifier
 
+# TODO: define LSA for for tfidf, bow
+
 max_df = 0.5
 min_df = 5
 cv_n_splits = 5
