@@ -5,7 +5,8 @@ This project contains a prediction model for RITAL NLP project on president and 
 ## Installation
 
 ```bash
-uv sync
+uv sync --project envs/py313
+uv sync --project envs/py314
 ```
 
 ## Usage
@@ -61,8 +62,10 @@ To set up these environments, run:
 ```
 uv sync --project envs/py313
 uv sync --project envs/py314
-uv pip install -e .
 ```
+
+Both environment definitions include the root package as an editable dependency,
+so `uv sync --project ...` is enough to make local imports from `src/` available.
 
 ### Downloading `fasttext` models
 
@@ -70,3 +73,19 @@ To download and unpack 2 pretrained fasttext models `cc.en.300.bin` and `cc.fr.3
 `uv run --active python3 scripts/download_fasttext.py`. Both files will be saved to `models` folder.
 
 **Attention** : after unpacking, both models are 14.5GB in size.
+
+### Track finetuning with MLflow
+
+Run finetuning (logs and metrics are tracked in local `mlruns/`):
+
+```bash
+uv run --project envs/py314 python3 spark/finetune.py
+```
+
+Open the tracking UI:
+
+```bash
+uv run --project envs/py314 mlflow ui --backend-store-uri ./mlruns --host 127.0.0.1 --port 5000
+```
+
+Then open `http://127.0.0.1:5000` in your browser.
