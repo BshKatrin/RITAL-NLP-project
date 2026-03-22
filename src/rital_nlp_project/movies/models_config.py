@@ -13,6 +13,7 @@ random_state = 42
 test_size = 0.2
 word2vec_model = "word2vec-google-news-300"
 fasttext_model = "cc.en.300.bin"
+bert_model = "google/bigbird-roberta-base"
 
 scoring = {
     'accuracy': 'accuracy',
