@@ -70,10 +70,10 @@ CLASSIFIERS = {
 def get_vectorizers_by_type(models):
 
     vectorizers_by_type = {
-        "count": COUNT_LIKE_VECTORIZERS,
-        "count_lsa": COUNT_LIKE_LSA_VECTORIZERS,
-        "tfidf": TFIDF_VECTORIZERS,
-        "tfidf_lsa": TFIDF_LSA_VECTORIZERS,
+        # "count": COUNT_LIKE_VECTORIZERS,
+        # "count_lsa": COUNT_LIKE_LSA_VECTORIZERS,
+        # "tfidf": TFIDF_VECTORIZERS,
+        # "tfidf_lsa": TFIDF_LSA_VECTORIZERS,
         "word2vec": get_word_embed_vectorizers(models.get("word2vec", None)),
         "fasttext": get_word_embed_vectorizers(models.get("fasttext", None))
     }

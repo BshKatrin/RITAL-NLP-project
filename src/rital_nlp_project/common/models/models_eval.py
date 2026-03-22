@@ -22,8 +22,7 @@ def eval_combination_matrix(X, y, vectorizer_list, classifier_list, scoring):
                 "classifier": clf,
                 **{score_name: np.mean(scores['test_' + score_name]) for score_name in scoring}
             })
-    return pd.DataFrame(results)
-
+    return pd.DataFrame(results)    
 
 def eval_pipeline(
     pipeline,  # pipeline or model
@@ -145,7 +144,8 @@ def add_experiments(vects, compatibility, classifiers):
             for clf_key in compatibility[vect_type]:
 
                 clf = classifiers[clf_key]
-                name = f"{vect_name}__{clf_key}"
+                
+                name = f"{vect_type}_{vect_name}__{clf_key}"
 
                 pipeline = Pipeline([
                     ("vect", vect),
@@ -156,6 +156,7 @@ def add_experiments(vects, compatibility, classifiers):
                     "name": name,
                     "pipeline": pipeline
                 })
+
     return res
 
 
