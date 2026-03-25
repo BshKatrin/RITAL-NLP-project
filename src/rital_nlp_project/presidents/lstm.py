@@ -1,4 +1,5 @@
 
+from torch import cat
 import torch.nn as nn
 
 class BiLSTMClassifier(nn.Module):
@@ -21,5 +22,5 @@ class BiLSTMClassifier(nn.Module):
         h_forward = h[0]
         h_backward = h[1]
 
-        h_concat = torch.cat((h_forward, h_backward), dim=1)
+        h_concat = cat((h_forward, h_backward), dim=1)
         return self.fc(h_concat)
