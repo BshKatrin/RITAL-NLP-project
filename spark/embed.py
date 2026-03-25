@@ -14,11 +14,19 @@ CONFIG = {
         "max_length": None,
         "stride": None,
     },
+    "camembert/camembert-base": {
+        "max_length": 512,
+        "stride": None,
+    },
+    "camembert/camembert-large": {
+        "max_length": 512,
+        "stride": None,
+    }
 }
-MODEL_NAME_OR_PATH = "google/bigbird-roberta-base"
-TOKENIZER_NAME_OR_PATH = "google/bigbird-roberta-base"
+MODEL_NAME_OR_PATH = "camembert/camembert-base"
+TOKENIZER_NAME_OR_PATH = "camembert/camembert-base"
 
-DATA_PATH = "Dataset/clean/movies_test.parquet"
+DATA_PATH = "Dataset/clean/presidents_test.parquet"
 DATASET_NAME = Path(DATA_PATH).stem
 MAX_LENGTH = CONFIG[MODEL_NAME_OR_PATH]["max_length"]
 STRIDE = CONFIG[MODEL_NAME_OR_PATH]["stride"]
@@ -47,6 +55,7 @@ if STRIDE is not None:
     tokenizer_kwargs["stride"] = STRIDE
 
 for example_id, text in enumerate(texts):
+    print(example_id)
     label = labels[example_id] if labels is not None else None
     
     tokens = tokenizer(text, **tokenizer_kwargs)
