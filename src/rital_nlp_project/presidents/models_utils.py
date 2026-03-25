@@ -143,7 +143,7 @@ def smooth_pred(pred, passes=1, n=1):
     return pred_smooth
 
 
-def smooth_duration(log_probs, D_max: list, kde: list):
+def get_scores_smooth_duration(log_probs, D_max: list, kde: list):
     """Compute duration-aware scores used for probability smoothing.
 
     The idea is to calculate a score of how well the last d observations
@@ -190,7 +190,7 @@ def smooth_duration(log_probs, D_max: list, kde: list):
 
 def smooth_prob_duration(probs, alpha, S):
     """Apply (weighted) smoothing to probabilities"""
-    alpha = 0.5
+    # alpha = 0.5
     S_final = alpha * probs + (1-alpha) * S
 
     # Trick to avoid overflow
@@ -199,7 +199,13 @@ def smooth_prob_duration(probs, alpha, S):
     return P_smoothed
 
 
-def predict_y_ext(model, X_ext, n):
+def predict_y_ext(probs, X_ext, n):
     """Predict edge cases (when phrase has no previous or next phrase)"""
-    pred = model.predict(X_ext)
+    pred = np.argmax(probs,)
     return np.pad(pred, pad_width=n, mode='edge')
+
+
+def get_seq_len(classes):
+    unique_class = classes[np.r_[0, np.where(np.diff(classes) != 0)[0] + 1]]
+    lengths = np.diff(np.r_[0, np.where(np.diff(classes) != 0)[0] + 1, len(classes)])
+    return unique_class, lengths
