@@ -7,4 +7,4 @@ def cv_fn(X, y):
 
 
 def split_fn(X, y):
-    return train_test_split(X, y, test_size=test_size, stratify=y, random_state=random_state)
+    return train_test_split(X, y, test_size=test_size, stratify=y, random_state=random_state, shuffle=True)

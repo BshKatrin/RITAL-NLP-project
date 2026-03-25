@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 import re
+from typing import Sequence
 
 from sklearn.base import BaseEstimator, TransformerMixin
-import spacy
 from unidecode import unidecode
 import nltk
 from nltk.stem.snowball import SnowballStemmer
@@ -21,6 +21,7 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
             mail_pattern=None,
             phone_pattern=None,
             punctuation=None,
+            extra_sub=None,
             pipeline_mode="classic",  # classic or bert
             lang,  # english or french,
     ):
@@ -32,6 +33,7 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
         self.mail_pattern = mail_pattern
         self.phone_pattern = phone_pattern
         self.punctuation = punctuation
+        self.extra_sub = extra_sub
         self.pipeline_mode = pipeline_mode
         self.lang = lang
 
@@ -59,6 +61,8 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
         return self
 
     def _get_lemmatizer(self):
+        import spacy
+
         if self.lang == "french":
             return spacy.load("fr_core_news_md")
 
@@ -105,6 +109,7 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
 
     def _preprocess_classic(self, text: str) -> str:
         text = text.lower()
+        text = self.apply_extra_sub(text)
         text = self.remove_emails(text, self.mail_pattern)
         text = self.remove_urls(text, self.url_pattern)
         text = self.remove_phones(text, self.phone_pattern)
@@ -118,6 +123,15 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
         text = self.remove_emails(text, self.mail_pattern)
         text = self.remove_urls(text, self.url_pattern)
         text = self.remove_phones(text, self.phone_pattern)
+        return text
+
+    def apply_extra_sub(self, text: str) -> str:
+        if not self.extra_sub:
+            return text
+
+        for pattern, replacement in self.extra_sub:
+            text = re.sub(pattern, replacement, text)
+
         return text
 
     def remove_emails(self, text: str, pattern: str) -> str:

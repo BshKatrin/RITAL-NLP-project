@@ -15,10 +15,10 @@ CONFIG = {
         "stride": None,
     },
 }
-MODEL_NAME_OR_PATH = "google-bert/bert-base-uncased"
-TOKENIZER_NAME_OR_PATH = "google-bert/bert-base-uncased"
+MODEL_NAME_OR_PATH = "google/bigbird-roberta-base"
+TOKENIZER_NAME_OR_PATH = "google/bigbird-roberta-base"
 
-DATA_PATH = "Dataset/clean/movies_clean_bert.parquet"
+DATA_PATH = "Dataset/clean/movies_test.parquet"
 DATASET_NAME = Path(DATA_PATH).stem
 MAX_LENGTH = CONFIG[MODEL_NAME_OR_PATH]["max_length"]
 STRIDE = CONFIG[MODEL_NAME_OR_PATH]["stride"]
@@ -38,6 +38,8 @@ chunk_ids = []
 tokenizer_kwargs = {
     "return_tensors": "pt",
     "truncation": True,
+    "padding": "max_length",
+    "return_overflowing_tokens": True,
 }
 if MAX_LENGTH is not None:
     tokenizer_kwargs["max_length"] = MAX_LENGTH
@@ -45,8 +47,8 @@ if STRIDE is not None:
     tokenizer_kwargs["stride"] = STRIDE
 
 for example_id, text in enumerate(texts):
-    print(example_id)
     label = labels[example_id] if labels is not None else None
+    
     tokens = tokenizer(text, **tokenizer_kwargs)
     input_ids = tokens["input_ids"].to(device)
     attention_mask = tokens["attention_mask"].to(device)
