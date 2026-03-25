@@ -10,6 +10,7 @@ from rital_nlp_project.presidents.sequence import (
     decode_batch,
     fit_single_span_prior,
     load_embeddings_with_metadata,
+    smooth_probabilities_by_sequence,
     speech_train_test_split,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "decode_batch",
     "fit_single_span_prior",
     "load_embeddings_with_metadata",
+    "smooth_probabilities_by_sequence",
     "speech_train_test_split",
 ]

@@ -4,6 +4,8 @@ import argparse
 import copy
 import json
 import random
+import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +42,17 @@ from rital_nlp_project.presidents import (
 INDEX_TO_LABEL = np.array(PRESIDENT_LABEL_ORDER, dtype=np.int64)
 POSITIVE_INDEX = int(np.where(INDEX_TO_LABEL == 1)[0][0])
 NEGATIVE_INDEX = int(np.where(INDEX_TO_LABEL == -1)[0][0])
+
+
+def default_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if (
+        getattr(torch.backends, "mps", None) is not None
+        and torch.backends.mps.is_available()
+    ):
+        return "mps"
+    return "cpu"
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--device",
-        default="cuda" if torch.cuda.is_available() else "cpu",
+        default=default_device(),
         help="Device used for training.",
     )
     parser.add_argument("--seed", type=int, default=42)
@@ -282,6 +295,11 @@ def main() -> None:
     device = torch.device(args.device)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    history_path = output_dir / "history.jsonl"
+    history_path.write_text("")
+
+    started_at = datetime.now().astimezone().isoformat()
+    run_start = time.perf_counter()
 
     embeddings, metadata = load_embeddings_with_metadata(
         args.embeddings_path,
@@ -346,6 +364,10 @@ def main() -> None:
     best_state = copy.deepcopy(model.state_dict())
 
     for epoch in range(1, args.epochs + 1):
+        epoch_start = time.perf_counter()
+        epoch_started_at = datetime.now().astimezone().isoformat()
+
+        train_start = time.perf_counter()
         train_loss = train_one_epoch(
             model,
             train_loader,
@@ -354,6 +376,9 @@ def main() -> None:
             device=device,
             gradient_clip=args.gradient_clip,
         )
+        train_seconds = time.perf_counter() - train_start
+
+        validation_start = time.perf_counter()
         val_predictions = collect_predictions(model, val_loader, device=device)
         val_metrics = {
             "argmax": evaluate_predictions(
@@ -369,6 +394,7 @@ def main() -> None:
                 min_negative_span=args.min_negative_span,
             ),
         }
+        validation_seconds = time.perf_counter() - validation_start
 
         selection_score = val_metrics[args.selection_decoder]["f1_macro"]
         if selection_score > best_score:
@@ -378,24 +404,48 @@ def main() -> None:
 
         epoch_record = {
             "epoch": epoch,
+            "started_at": epoch_started_at,
             "train_loss": train_loss,
+            "train_seconds": train_seconds,
+            "validation_seconds": validation_seconds,
+            "epoch_seconds": time.perf_counter() - epoch_start,
             "validation": val_metrics,
         }
         history.append(epoch_record)
+        with history_path.open("a", encoding="utf-8") as history_file:
+            history_file.write(json.dumps(epoch_record) + "\n")
         print(json.dumps(epoch_record, indent=2))
 
     model.load_state_dict(best_state)
 
+    final_evaluation_start = time.perf_counter()
     val_predictions = collect_predictions(model, val_loader, device=device)
     test_predictions = collect_predictions(model, test_loader, device=device)
+    final_evaluation_seconds = time.perf_counter() - final_evaluation_start
+
+    ended_at = datetime.now().astimezone().isoformat()
+    total_seconds = time.perf_counter() - run_start
 
     summary = {
         "config": vars(args),
         "input_dim": int(embeddings.shape[1]),
+        "device": str(device),
         "train_speeches": len(train_sequences),
         "validation_speeches": len(val_sequences),
         "test_speeches": len(test_sequences),
+        "train_rows": int(sum(sequence.length for sequence in train_sequences)),
+        "validation_rows": int(sum(sequence.length for sequence in val_sequences)),
+        "test_rows": int(sum(sequence.length for sequence in test_sequences)),
         "best_epoch": best_epoch,
+        "best_selection_score": best_score,
+        "timing": {
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "total_seconds": total_seconds,
+            "train_seconds": float(sum(item["train_seconds"] for item in history)),
+            "validation_seconds": float(sum(item["validation_seconds"] for item in history)),
+            "final_evaluation_seconds": final_evaluation_seconds,
+        },
         "history": history,
         "validation": {
             "argmax": evaluate_predictions(

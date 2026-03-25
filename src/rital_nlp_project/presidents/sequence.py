@@ -7,6 +7,7 @@ from typing import Iterable, Sequence
 import numpy as np
 import pandas as pd
 import torch
+from scipy.ndimage import gaussian_filter1d
 from torch.utils.data import Dataset
 
 
@@ -352,3 +353,26 @@ def decode_batch(
         decoded_sequences.append(decoded)
 
     return decoded_sequences
+
+
+def smooth_probabilities_by_sequence(
+    sequence_probabilities: Iterable[np.ndarray],
+    *,
+    sigma: float,
+) -> list[np.ndarray]:
+    smoothed_sequences: list[np.ndarray] = []
+
+    for probabilities in sequence_probabilities:
+        if sigma <= 0:
+            smoothed = np.asarray(probabilities, dtype=np.float64).copy()
+        else:
+            smoothed = gaussian_filter1d(
+                np.asarray(probabilities, dtype=np.float64),
+                sigma=sigma,
+                axis=0,
+            )
+        row_sums = smoothed.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1.0
+        smoothed_sequences.append(smoothed / row_sums)
+
+    return smoothed_sequences
