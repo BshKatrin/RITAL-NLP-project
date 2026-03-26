@@ -9,9 +9,9 @@ import mlflow
 
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.presidents.models_utils import split_fn
-from rital_nlp_project.common.models.finetune_utils import prepare_train_test, compute_metrics, tokenize_head, tokenize_head_tail
+from rital_nlp_project.common.models.finetune_utils import prepare_train_test, compute_metrics, tokenize_head_tail, tokenize_head
 
-train_dataset, test_dataset = prepare_train_test(load_clean_data, "Dataset/clean/movies_clean_bert.parquet", split_fn)
+train_dataset = prepare_train_test(load_clean_data, "Dataset/clean/movies_clean_bert.parquet", split_fn=None)
 model = "google-bert/bert-base-uncased"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -45,16 +45,16 @@ train_dataset = train_dataset.map(
     remove_columns=train_dataset.column_names,
 )
 
-test_dataset = test_dataset.map(
-    lambda batch : tokenize_fn(tokenizer, batch),
-    batched=True,
-    remove_columns=test_dataset.column_names,
-)
+# test_dataset = test_dataset.map(
+#     lambda batch : tokenize_fn(tokenizer, batch),
+#     batched=True,
+#     remove_columns=test_dataset.column_names,
+# )
 
 columns = ["input_ids", "attention_mask"]
 
 train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
-test_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
+#test_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
 
 os.environ.setdefault("MLFLOW_TRACKING_URI", "file:./mlruns")
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
@@ -62,21 +62,19 @@ mlflow.set_experiment("movies-mbert-finetune")
 
 # Finetune
 training_args = TrainingArguments(
-    output_dir="Dataset/finetune/results_bert",
+    output_dir="Dataset/finetune/results_bert_head",
     report_to=["mlflow"],
-    run_name="model-movies",
-    eval_strategy="epoch",
+    run_name="model-pres",
+    eval_strategy="no",
     logging_strategy="steps",
     logging_steps=50,
     save_strategy="epoch",
     learning_rate=5e-6,
     per_device_train_batch_size=16,
     per_device_eval_batch_size=16,
-    num_train_epochs=5,
+    num_train_epochs=3,
     #weight_decay=0.01,
-    metric_for_best_model="eval_loss",
-    greater_is_better=False, 
-    load_best_model_at_end=True,
+    load_best_model_at_end=False,
     max_grad_norm=0.5,
     warmup_ratio=0.1,
 )
@@ -98,13 +96,13 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset,
-    eval_dataset=test_dataset,
+    # eval_dataset=test_dataset,
     compute_metrics=compute_metrics,
     data_collator=DataCollatorWithPadding(tokenizer=tokenizer, return_tensors="pt"),
     optimizers=(AdamW(optimizer_grouped_parameters, lr=5e-6, eps=1e-6), None), 
 )
 
 trainer.train()
-trainer.save_model("Dataset/finetune/model_bert")
-tokenizer.save_pretrained("Dataset/finetune/tokenizer_bert")
+trainer.save_model("Dataset/finetune/model_bert_head")
+tokenizer.save_pretrained("Dataset/finetune/tokenizer_bert_head")
 mlflow.end_run()

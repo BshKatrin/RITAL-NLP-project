@@ -87,18 +87,18 @@ def eval_epoch(model, dataloader, criterion, device):
 
 def main():
 	data_path = "Dataset/clean/presidents_clean_bert.parquet"
-	base_probs_path = "Dataset/pred_test_log_reg.csv"
+	base_probs_path = "Dataset/predictions/presidents_train_pred_head.csv"
     # base_probs_path = "Dataset/finetune/presidents_train_pred_head.csv"
     # base_probs_path = "Dataset/finetune/pred_test_log_reg.csv"
 
-	output_model_path = "Dataset/finetune/model_lstm_pres_log_reg.pt"
+	output_model_path = "Dataset/finetune/model_lstm_pres.pt"
 	output_probs_path = "Dataset/finetune/presidents_train_smoothed_probs_lstm.csv"
 	output_config_path = "Dataset/finetune/model_lstm_pres_config.json"
 
-	k = 3
-	epochs = 50
-	batch_size = 64
-	learning_rate = 1e-3
+	k = 2
+	epochs = 30
+	batch_size = 128
+	learning_rate = 1e-4
 	hidden_dim = 64
 	num_layers = 2
 	dropout = 0.2
@@ -153,7 +153,7 @@ def main():
 	pd.DataFrame(
 		{
 			"base_prob_1": base_probs,
-			"smoothed_prob_1": smoothed_probs,
+			"lstm_prob_1": smoothed_probs,
 			"label": labels.astype(int),
 		}
 	).to_csv(output_probs_path, index=False)

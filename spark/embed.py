@@ -10,10 +10,6 @@ CONFIG = {
         "max_length": 512,
         "stride": 128,
     },
-    "google/bigbird-roberta-base": {
-        "max_length": None,
-        "stride": None,
-    },
     "camembert/camembert-base": {
         "max_length": 512,
         "stride": None,
@@ -23,10 +19,10 @@ CONFIG = {
         "stride": None,
     }
 }
-MODEL_NAME_OR_PATH = "camembert/camembert-base"
-TOKENIZER_NAME_OR_PATH = "camembert/camembert-base"
+MODEL_NAME_OR_PATH = "google-bert/bert-base-uncased"
+TOKENIZER_NAME_OR_PATH = "google-bert/bert-base-uncased"
 
-DATA_PATH = "Dataset/clean/presidents_test.parquet"
+DATA_PATH = "Dataset/clean/movies_test.parquet"
 DATASET_NAME = Path(DATA_PATH).stem
 MAX_LENGTH = CONFIG[MODEL_NAME_OR_PATH]["max_length"]
 STRIDE = CONFIG[MODEL_NAME_OR_PATH]["stride"]
@@ -87,7 +83,6 @@ metadata = pd.DataFrame(
 )
 
 model_name = MODEL_NAME_OR_PATH.split("/")[-1]
-#np.save(f"Dataset/embeddings/movies_test_embeddings_{model_name}.npy", embeddings)
 metadata.to_parquet(
     f"Dataset/embeddings/{DATASET_NAME}_metadata_{model_name}.parquet",
     index=False,
