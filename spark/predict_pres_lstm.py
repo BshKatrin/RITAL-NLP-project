@@ -269,9 +269,23 @@ def main() -> None:
     raw_prob_path = output_dir / "submission_prob_raw_positive.csv"
     frame[["prob_positive_raw"]].to_csv(raw_prob_path, index=False, header=False)
 
+    raw_prob_inverted_path = output_dir / "submission_prob_raw_positive_inverted.csv"
+    (1.0 - frame[["prob_positive_raw"]]).to_csv(
+        raw_prob_inverted_path,
+        index=False,
+        header=False,
+    )
+
     span_prob_path = output_dir / "submission_prob_single_negative_span.csv"
     frame[["prob_positive_single_negative_span"]].to_csv(
         span_prob_path,
+        index=False,
+        header=False,
+    )
+
+    span_prob_inverted_path = output_dir / "submission_prob_single_negative_span_inverted.csv"
+    (1.0 - frame[["prob_positive_single_negative_span"]]).to_csv(
+        span_prob_inverted_path,
         index=False,
         header=False,
     )
@@ -302,7 +316,11 @@ def main() -> None:
         "outputs": {
             "detailed_predictions": str(detailed_path.resolve()),
             "submission_prob_raw_positive": str(raw_prob_path.resolve()),
+            "submission_prob_raw_positive_inverted": str(raw_prob_inverted_path.resolve()),
             "submission_prob_single_negative_span": str(span_prob_path.resolve()),
+            "submission_prob_single_negative_span_inverted": str(
+                span_prob_inverted_path.resolve()
+            ),
             "submission_label_single_negative_span": str(span_label_path.resolve()),
         },
         "label_counts": {
