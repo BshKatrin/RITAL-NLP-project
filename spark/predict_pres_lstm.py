@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
+from scipy.special import expit, logit
 from torch.utils.data import DataLoader
 
 from rital_nlp_project.presidents import (
@@ -111,6 +112,32 @@ def parse_args() -> argparse.Namespace:
         "--device",
         default=default_device(),
         help="Inference device.",
+    )
+    parser.add_argument(
+        "--calibration-path",
+        default=None,
+        help=(
+            "Optional JSON file produced by the CV calibration script. "
+            "When provided, calibrated score and label files are exported too."
+        ),
+    )
+    parser.add_argument(
+        "--score-delta",
+        type=float,
+        default=None,
+        help=(
+            "Optional logit-space score shift applied to the selected Mitterrand "
+            "probability stream before exporting calibrated scores."
+        ),
+    )
+    parser.add_argument(
+        "--decision-threshold",
+        type=float,
+        default=None,
+        help=(
+            "Optional threshold applied to the selected calibrated Mitterrand score "
+            "when exporting calibrated hard labels."
+        ),
     )
     return parser.parse_args()
 
@@ -235,6 +262,11 @@ def load_model(
     return model
 
 
+def apply_score_delta(scores: np.ndarray, delta: float) -> np.ndarray:
+    clipped = np.clip(np.asarray(scores, dtype=np.float64), 1e-9, 1.0 - 1e-9)
+    return expit(logit(clipped) - float(delta))
+
+
 def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
@@ -263,6 +295,9 @@ def main() -> None:
     position_features = checkpoint_config.get("position_features", "none")
     transition_features = bool(checkpoint_config.get("transition_features", False))
     device = torch.device(args.device)
+    calibration = None
+    if args.calibration_path is not None:
+        calibration = json.loads(Path(args.calibration_path).read_text())
 
     prior_embeddings, prior_metadata = load_embeddings_with_metadata(
         args.prior_embeddings_path,
@@ -344,6 +379,98 @@ def main() -> None:
         header=False,
     )
 
+    calibration_outputs = None
+    calibration_config = None
+    score_delta = args.score_delta
+    decision_threshold = args.decision_threshold
+    selected_score_name = "prob_mitterrand_single_negative_span"
+
+    if calibration is not None:
+        recommended_calibration = calibration.get("recommended_calibration", {})
+        score_delta = (
+            recommended_calibration.get("equivalent_score_delta")
+            if score_delta is None
+            else score_delta
+        )
+        decision_threshold = (
+            recommended_calibration.get(
+                "best_threshold",
+                recommended_calibration.get("threshold"),
+            )
+            if decision_threshold is None
+            else decision_threshold
+        )
+        selected_score_name = calibration.get(
+            "selected_score_name",
+            selected_score_name,
+        )
+
+    if score_delta is not None or decision_threshold is not None:
+        if selected_score_name == "prob_mitterrand_raw":
+            base_scores = frame["prob_negative_raw"].to_numpy(dtype=np.float64)
+            score_output_name = "submission_prob_raw_positive_inverted_calibrated.csv"
+        elif selected_score_name == "prob_mitterrand_single_negative_span":
+            base_scores = frame["prob_negative_single_negative_span"].to_numpy(
+                dtype=np.float64
+            )
+            score_output_name = (
+                "submission_prob_single_negative_span_inverted_calibrated.csv"
+            )
+        else:
+            raise ValueError(
+                f"Unsupported calibrated score source: {selected_score_name}"
+            )
+
+        effective_delta = 0.0 if score_delta is None else float(score_delta)
+        effective_threshold = (
+            0.5 if decision_threshold is None else float(decision_threshold)
+        )
+        calibrated_scores = apply_score_delta(base_scores, effective_delta)
+        calibrated_score_path = output_dir / score_output_name
+        pd.DataFrame(calibrated_scores).to_csv(
+            calibrated_score_path,
+            index=False,
+            header=False,
+        )
+
+        calibrated_label_path = output_dir / "submission_label_calibrated.csv"
+        pd.DataFrame(
+            np.where(calibrated_scores >= effective_threshold, "M", "C")
+        ).to_csv(
+            calibrated_label_path,
+            index=False,
+            header=False,
+        )
+        calibrated_labels = np.where(calibrated_scores >= effective_threshold, "M", "C")
+
+        calibration_outputs = {
+            "submission_prob_calibrated": str(calibrated_score_path.resolve()),
+            "submission_label_calibrated": str(calibrated_label_path.resolve()),
+        }
+        calibration_config = {
+            "calibration_path": (
+                str(Path(args.calibration_path).resolve())
+                if args.calibration_path is not None
+                else None
+            ),
+            "selected_score_name": selected_score_name,
+            "score_delta": float(effective_delta),
+            "decision_threshold": float(effective_threshold),
+            "original_threshold": (
+                float(recommended_calibration["threshold"])
+                if calibration is not None
+                and "recommended_calibration" in calibration
+                and "threshold" in calibration["recommended_calibration"]
+                else None
+            ),
+        }
+        calibration_config["calibrated_label_counts"] = {
+            label: int(count)
+            for label, count in (
+                pd.Series(calibrated_labels).value_counts().sort_index().items()
+            )
+        }
+
     ended_at = datetime.now().astimezone().isoformat()
     total_seconds = time.perf_counter() - run_start
     summary = {
@@ -375,6 +502,8 @@ def main() -> None:
             ),
             "submission_label_single_negative_span": str(span_label_path.resolve()),
         },
+        "calibration": calibration_config,
+        "calibrated_outputs": calibration_outputs,
         "label_counts": {
             label: int(count)
             for label, count in (
