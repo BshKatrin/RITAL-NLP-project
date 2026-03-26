@@ -205,7 +205,19 @@ def predict_y_ext(probs, X_ext, n):
     return np.pad(pred, pad_width=n, mode='edge')
 
 
-def get_seq_len(classes):
-    unique_class = classes[np.r_[0, np.where(np.diff(classes) != 0)[0] + 1]]
-    lengths = np.diff(np.r_[0, np.where(np.diff(classes) != 0)[0] + 1, len(classes)])
-    return unique_class, lengths
+def expand_train_test(X_train, X_test, y_train, y_test=None, n=1, add_extra=True):
+    X_train_concat = concat_neighbours(X_train, n)
+    X_test_concat = concat_neighbours(X_test, n)
+    y_train_concat = y_train[n:-n]
+
+    if add_extra:
+        X_train_extra = add_extra_features(X_train)
+        X_test_extra = add_extra_features(X_test)
+        X_train_concat = np.concatenate([X_train_concat, X_train_extra], axis=1)
+        X_test_concat = np.concatenate([X_test_concat, X_test_extra], axis=1)
+
+    if y_test is not None:
+        y_test_concat = y_test[n:-n]
+        return X_train_concat, X_test_concat, y_train_concat, y_test_concat
+
+    return X_train_concat, X_test_concat, y_train_concat

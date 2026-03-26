@@ -33,7 +33,7 @@ def plot_class_wordclouds(classes, matrix, vocab):
 
         axes[i].imshow(cloud)
         axes[i].axis("off")
-        axes[i].set_title(target)
+        axes[i].set_title(f"Class {target}")
 
     plt.tight_layout()
     return fig
