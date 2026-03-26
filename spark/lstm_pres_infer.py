@@ -29,27 +29,13 @@ def build_probability_windows(probabilities, k):
 	return windows
 
 
-def resolve_test_probs_path():
-	primary = "Dataset/presidents_test_pred_head.csv"
-	fallback = "Dataset/finetune/presidents_test_pred_head.csv"
-
-	if os.path.exists(primary):
-		return primary
-	if os.path.exists(fallback):
-		return fallback
-	raise FileNotFoundError(
-		"Could not find test probabilities CSV in either "
-		f"'{primary}' or '{fallback}'"
-	)
-
-
 @torch.inference_mode()
 def main():
-	model_path = "Dataset/finetune/model_lstm_pres.pt"
+	model_path = "Dataset/finetune/model_lstm_pres_log_reg.pt"
 	config_path = "Dataset/finetune/model_lstm_pres_config.json"
-	output_path = "Dataset/finetune/presidents_test_smoothed_probs_lstm.csv"
+	output_path = "Dataset/finetune/presidents_test_smoothed_probs_lstm_log_reg.csv"
 
-	test_probs_path = resolve_test_probs_path()
+	test_probs_path =  "Dataset/pred_test_log_reg.csv"
 
 	if not os.path.exists(model_path):
 		raise FileNotFoundError(f"Missing trained model: {model_path}")

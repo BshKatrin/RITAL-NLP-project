@@ -87,15 +87,15 @@ def eval_epoch(model, dataloader, criterion, device):
 
 def main():
 	data_path = "Dataset/clean/presidents_clean_bert.parquet"
-	base_probs_path = "Dataset/predictions/presidents_train_pred_head.csv"
+	base_probs_path = "Dataset/pred_train_log_reg.csv"
     # base_probs_path = "Dataset/finetune/presidents_train_pred_head.csv"
     # base_probs_path = "Dataset/finetune/pred_test_log_reg.csv"
 
-	output_model_path = "Dataset/finetune/model_lstm_pres.pt"
+	output_model_path = "Dataset/finetune/model_lstm_pres_log_reg.pt"
 	output_probs_path = "Dataset/finetune/presidents_train_smoothed_probs_lstm.csv"
 	output_config_path = "Dataset/finetune/model_lstm_pres_config.json"
 
-	k = 2
+	k = 3
 	epochs = 30
 	batch_size = 128
 	learning_rate = 1e-4
@@ -150,6 +150,7 @@ def main():
 	Path(output_model_path).parent.mkdir(parents=True, exist_ok=True)
 	torch.save(model.state_dict(), output_model_path)
 
+	print(base_probs.shape, smoothed_probs.shape, labels.shape)
 	pd.DataFrame(
 		{
 			"base_prob_1": base_probs,
