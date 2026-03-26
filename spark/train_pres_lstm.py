@@ -29,6 +29,8 @@ from rital_nlp_project.presidents import (
     PAD_LABEL_INDEX,
     PRESIDENT_LABEL_ORDER,
     SpeechSequenceDataset,
+    augment_sequences_with_position_features,
+    augment_sequences_with_transition_features,
     build_speech_sequences,
     collate_speech_sequences,
     compute_class_weights,
@@ -87,6 +89,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gradient-clip", type=float, default=1.0)
     parser.add_argument("--min-negative-span", type=int, default=3)
     parser.add_argument(
+        "--position-features",
+        choices=("none", "basic"),
+        default="none",
+        help="Concatenate deterministic position features to each sentence embedding.",
+    )
+    parser.add_argument(
+        "--transition-features",
+        action="store_true",
+        help="Concatenate local change-point features derived from neighboring sentence embeddings.",
+    )
+    parser.add_argument(
+        "--position-bins",
+        type=int,
+        default=0,
+        help="Number of normalized start/end bins used by the single-span prior.",
+    )
+    parser.add_argument(
+        "--position-prior-weight",
+        type=float,
+        default=0.0,
+        help="Weight applied to the span location prior during constrained decoding.",
+    )
+    parser.add_argument(
         "--selection-decoder",
         choices=("argmax", "single_negative_span"),
         default="single_negative_span",
@@ -101,6 +126,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-train-speeches", type=int, default=None)
     parser.add_argument("--max-val-speeches", type=int, default=None)
     parser.add_argument("--max-test-speeches", type=int, default=None)
+    parser.add_argument(
+        "--final-train-full-data",
+        action="store_true",
+        help="Train on all labeled speeches with fixed hyperparameters and skip held-out evaluation.",
+    )
     return parser.parse_args()
 
 
@@ -203,6 +233,7 @@ def evaluate_predictions(
     decoder: str,
     prior=None,
     min_negative_span: int,
+    position_prior_weight: float,
 ) -> dict[str, float]:
     sequence_probabilities = [
         item["probabilities"] for item in predictions  # type: ignore[index]
@@ -212,6 +243,7 @@ def evaluate_predictions(
         decoder=decoder,
         prior=prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
 
     y_true_idx = np.concatenate(
@@ -252,6 +284,7 @@ def predictions_to_frame(
     *,
     prior,
     min_negative_span: int,
+    position_prior_weight: float,
 ) -> pd.DataFrame:
     raw_decoded = decode_batch(
         [item["probabilities"] for item in predictions],  # type: ignore[index]
@@ -262,6 +295,7 @@ def predictions_to_frame(
         decoder="single_negative_span",
         prior=prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
 
     frames = []
@@ -306,41 +340,56 @@ def main() -> None:
         args.metadata_path,
     )
     sequences = build_speech_sequences(embeddings, metadata)
+    if args.position_features != "none":
+        sequences = augment_sequences_with_position_features(sequences)
+    if args.transition_features:
+        sequences = augment_sequences_with_transition_features(sequences)
 
-    train_sequences, test_sequences = speech_train_test_split(
-        sequences,
-        test_size=args.test_size,
-    )
-    train_sequences, val_sequences = speech_train_test_split(
-        train_sequences,
-        test_size=args.validation_size,
-    )
+    if args.final_train_full_data:
+        train_sequences = maybe_slice_sequences(sequences, args.max_train_speeches)
+        val_sequences = []
+        test_sequences = []
+    else:
+        train_sequences, test_sequences = speech_train_test_split(
+            sequences,
+            test_size=args.test_size,
+        )
+        train_sequences, val_sequences = speech_train_test_split(
+            train_sequences,
+            test_size=args.validation_size,
+        )
 
-    train_sequences = maybe_slice_sequences(train_sequences, args.max_train_speeches)
-    val_sequences = maybe_slice_sequences(val_sequences, args.max_val_speeches)
-    test_sequences = maybe_slice_sequences(test_sequences, args.max_test_speeches)
+        train_sequences = maybe_slice_sequences(train_sequences, args.max_train_speeches)
+        val_sequences = maybe_slice_sequences(val_sequences, args.max_val_speeches)
+        test_sequences = maybe_slice_sequences(test_sequences, args.max_test_speeches)
 
     class_weights = compute_class_weights(train_sequences).to(device)
-    span_prior = fit_single_span_prior(train_sequences)
+    span_prior = fit_single_span_prior(
+        train_sequences,
+        position_bins=args.position_bins,
+    )
 
     train_loader = create_loader(
         train_sequences,
         batch_size=args.batch_size,
         shuffle=True,
     )
-    val_loader = create_loader(
-        val_sequences,
-        batch_size=args.batch_size,
-        shuffle=False,
-    )
-    test_loader = create_loader(
-        test_sequences,
-        batch_size=args.batch_size,
-        shuffle=False,
-    )
+    val_loader = None
+    test_loader = None
+    if not args.final_train_full_data:
+        val_loader = create_loader(
+            val_sequences,
+            batch_size=args.batch_size,
+            shuffle=False,
+        )
+        test_loader = create_loader(
+            test_sequences,
+            batch_size=args.batch_size,
+            shuffle=False,
+        )
 
     model = BiLSTMSequenceTagger(
-        input_dim=embeddings.shape[1],
+        input_dim=int(train_sequences[0].embeddings.shape[1]),
         hidden_dim=args.hidden_dim,
         projection_dim=args.projection_dim,
         num_layers=args.num_layers,
@@ -378,29 +427,38 @@ def main() -> None:
         )
         train_seconds = time.perf_counter() - train_start
 
-        validation_start = time.perf_counter()
-        val_predictions = collect_predictions(model, val_loader, device=device)
-        val_metrics = {
-            "argmax": evaluate_predictions(
-                val_predictions,
-                decoder="argmax",
-                prior=None,
-                min_negative_span=args.min_negative_span,
-            ),
-            "single_negative_span": evaluate_predictions(
-                val_predictions,
-                decoder="single_negative_span",
-                prior=span_prior,
-                min_negative_span=args.min_negative_span,
-            ),
-        }
-        validation_seconds = time.perf_counter() - validation_start
-
-        selection_score = val_metrics[args.selection_decoder]["f1_macro"]
-        if selection_score > best_score:
-            best_score = selection_score
+        if args.final_train_full_data:
+            validation_seconds = 0.0
+            val_metrics = {}
             best_epoch = epoch
+            best_score = float("nan")
             best_state = copy.deepcopy(model.state_dict())
+        else:
+            validation_start = time.perf_counter()
+            val_predictions = collect_predictions(model, val_loader, device=device)  # type: ignore[arg-type]
+            val_metrics = {
+                "argmax": evaluate_predictions(
+                    val_predictions,
+                    decoder="argmax",
+                    prior=None,
+                    min_negative_span=args.min_negative_span,
+                    position_prior_weight=0.0,
+                ),
+                "single_negative_span": evaluate_predictions(
+                    val_predictions,
+                    decoder="single_negative_span",
+                    prior=span_prior,
+                    min_negative_span=args.min_negative_span,
+                    position_prior_weight=args.position_prior_weight,
+                ),
+            }
+            validation_seconds = time.perf_counter() - validation_start
+
+            selection_score = val_metrics[args.selection_decoder]["f1_macro"]
+            if selection_score > best_score:
+                best_score = selection_score
+                best_epoch = epoch
+                best_state = copy.deepcopy(model.state_dict())
 
         epoch_record = {
             "epoch": epoch,
@@ -418,18 +476,23 @@ def main() -> None:
 
     model.load_state_dict(best_state)
 
-    final_evaluation_start = time.perf_counter()
-    val_predictions = collect_predictions(model, val_loader, device=device)
-    test_predictions = collect_predictions(model, test_loader, device=device)
-    final_evaluation_seconds = time.perf_counter() - final_evaluation_start
+    val_predictions = None
+    test_predictions = None
+    final_evaluation_seconds = 0.0
+    if not args.final_train_full_data:
+        final_evaluation_start = time.perf_counter()
+        val_predictions = collect_predictions(model, val_loader, device=device)  # type: ignore[arg-type]
+        test_predictions = collect_predictions(model, test_loader, device=device)  # type: ignore[arg-type]
+        final_evaluation_seconds = time.perf_counter() - final_evaluation_start
 
     ended_at = datetime.now().astimezone().isoformat()
     total_seconds = time.perf_counter() - run_start
 
     summary = {
         "config": vars(args),
-        "input_dim": int(embeddings.shape[1]),
+        "input_dim": int(train_sequences[0].embeddings.shape[1]),
         "device": str(device),
+        "mode": "final_full_data" if args.final_train_full_data else "held_out_eval",
         "train_speeches": len(train_sequences),
         "validation_speeches": len(val_sequences),
         "test_speeches": len(test_sequences),
@@ -447,35 +510,42 @@ def main() -> None:
             "final_evaluation_seconds": final_evaluation_seconds,
         },
         "history": history,
-        "validation": {
-            "argmax": evaluate_predictions(
-                val_predictions,
-                decoder="argmax",
-                prior=None,
-                min_negative_span=args.min_negative_span,
-            ),
-            "single_negative_span": evaluate_predictions(
-                val_predictions,
-                decoder="single_negative_span",
-                prior=span_prior,
-                min_negative_span=args.min_negative_span,
-            ),
-        },
-        "test": {
-            "argmax": evaluate_predictions(
-                test_predictions,
-                decoder="argmax",
-                prior=None,
-                min_negative_span=args.min_negative_span,
-            ),
-            "single_negative_span": evaluate_predictions(
-                test_predictions,
-                decoder="single_negative_span",
-                prior=span_prior,
-                min_negative_span=args.min_negative_span,
-            ),
-        },
+        "validation": None,
+        "test": None,
     }
+    if not args.final_train_full_data:
+        summary["validation"] = {
+            "argmax": evaluate_predictions(
+                val_predictions,  # type: ignore[arg-type]
+                decoder="argmax",
+                prior=None,
+                min_negative_span=args.min_negative_span,
+                position_prior_weight=0.0,
+            ),
+            "single_negative_span": evaluate_predictions(
+                val_predictions,  # type: ignore[arg-type]
+                decoder="single_negative_span",
+                prior=span_prior,
+                min_negative_span=args.min_negative_span,
+                position_prior_weight=args.position_prior_weight,
+            ),
+        }
+        summary["test"] = {
+            "argmax": evaluate_predictions(
+                test_predictions,  # type: ignore[arg-type]
+                decoder="argmax",
+                prior=None,
+                min_negative_span=args.min_negative_span,
+                position_prior_weight=0.0,
+            ),
+            "single_negative_span": evaluate_predictions(
+                test_predictions,  # type: ignore[arg-type]
+                decoder="single_negative_span",
+                prior=span_prior,
+                min_negative_span=args.min_negative_span,
+                position_prior_weight=args.position_prior_weight,
+            ),
+        }
 
     checkpoint_path = output_dir / "presidents_lstm.pt"
     torch.save(
@@ -490,21 +560,26 @@ def main() -> None:
     metrics_path = output_dir / "metrics.json"
     metrics_path.write_text(json.dumps(summary, indent=2))
 
-    val_predictions_path = output_dir / "validation_predictions.csv"
-    predictions_to_frame(
-        val_predictions,
-        prior=span_prior,
-        min_negative_span=args.min_negative_span,
-    ).to_csv(val_predictions_path, index=False)
+    if not args.final_train_full_data:
+        val_predictions_path = output_dir / "validation_predictions.csv"
+        predictions_to_frame(
+            val_predictions,  # type: ignore[arg-type]
+            prior=span_prior,
+            min_negative_span=args.min_negative_span,
+            position_prior_weight=args.position_prior_weight,
+        ).to_csv(val_predictions_path, index=False)
 
-    test_predictions_path = output_dir / "test_predictions.csv"
-    predictions_to_frame(
-        test_predictions,
-        prior=span_prior,
-        min_negative_span=args.min_negative_span,
-    ).to_csv(test_predictions_path, index=False)
+        test_predictions_path = output_dir / "test_predictions.csv"
+        predictions_to_frame(
+            test_predictions,  # type: ignore[arg-type]
+            prior=span_prior,
+            min_negative_span=args.min_negative_span,
+            position_prior_weight=args.position_prior_weight,
+        ).to_csv(test_predictions_path, index=False)
 
-    print(json.dumps(summary["test"], indent=2))
+        print(json.dumps(summary["test"], indent=2))
+    else:
+        print(json.dumps({"checkpoint": str(checkpoint_path), "timing": summary["timing"]}, indent=2))
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ class SingleSpanPrior:
     no_span_log_prob: float
     span_log_prob: float
     span_length_log_probs: np.ndarray
+    start_bin_log_probs: np.ndarray | None = None
+    end_bin_log_probs: np.ndarray | None = None
 
     def get_span_length_log_prob(self, span_length: int) -> float:
         if span_length <= 0:
@@ -39,6 +41,23 @@ class SingleSpanPrior:
 
         capped = min(span_length, len(self.span_length_log_probs) - 1)
         return float(self.span_length_log_probs[capped])
+
+    def get_position_log_prob(
+        self,
+        start: int,
+        end: int,
+        *,
+        sequence_length: int,
+    ) -> float:
+        if self.start_bin_log_probs is None or self.end_bin_log_probs is None:
+            return 0.0
+        if sequence_length <= 0:
+            raise ValueError("sequence_length must be strictly positive")
+
+        num_bins = len(self.start_bin_log_probs)
+        start_bin = _fraction_to_bin(start / sequence_length, num_bins)
+        end_bin = _fraction_to_bin(end / sequence_length, num_bins)
+        return float(self.start_bin_log_probs[start_bin] + self.end_bin_log_probs[end_bin])
 
 
 class SpeechSequenceDataset(Dataset):
@@ -83,6 +102,122 @@ class SpeechSequenceDataset(Dataset):
             item["labels"] = torch.from_numpy(label_indices)
 
         return item
+
+
+def _fraction_to_bin(value: float, num_bins: int) -> int:
+    if num_bins <= 0:
+        raise ValueError("num_bins must be strictly positive")
+
+    clipped = min(max(float(value), 0.0), 1.0)
+    return min(int(clipped * num_bins), num_bins - 1)
+
+
+def build_position_features(length: int) -> np.ndarray:
+    if length <= 0:
+        raise ValueError("length must be strictly positive")
+
+    denominator = max(length - 1, 1)
+    positions = np.arange(length, dtype=np.float32) / denominator
+    reverse_positions = positions[::-1].copy()
+    centered_positions = positions * 2.0 - 1.0
+    inverse_length = np.full(length, 1.0 / length, dtype=np.float32)
+
+    return np.stack(
+        [
+            positions,
+            reverse_positions,
+            positions**2,
+            reverse_positions**2,
+            centered_positions,
+            inverse_length,
+        ],
+        axis=1,
+    )
+
+
+def build_transition_features(embeddings: np.ndarray) -> np.ndarray:
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    if embeddings.ndim != 2:
+        raise ValueError(
+            f"embeddings must be a 2D array, got shape {tuple(embeddings.shape)}"
+        )
+    length = embeddings.shape[0]
+    if length <= 0:
+        raise ValueError("embeddings must contain at least one row")
+
+    previous = np.concatenate([embeddings[:1], embeddings[:-1]], axis=0)
+    following = np.concatenate([embeddings[1:], embeddings[-1:]], axis=0)
+
+    current_norms = np.linalg.norm(embeddings, axis=1)
+    previous_norms = np.linalg.norm(previous, axis=1)
+    following_norms = np.linalg.norm(following, axis=1)
+    cosine_denom_prev = np.maximum(current_norms * previous_norms, 1e-6)
+    cosine_denom_next = np.maximum(current_norms * following_norms, 1e-6)
+
+    cosine_prev = np.sum(embeddings * previous, axis=1) / cosine_denom_prev
+    cosine_next = np.sum(embeddings * following, axis=1) / cosine_denom_next
+    l2_prev = np.linalg.norm(embeddings - previous, axis=1)
+    l2_next = np.linalg.norm(following - embeddings, axis=1)
+
+    return np.stack(
+        [
+            cosine_prev.astype(np.float32),
+            cosine_next.astype(np.float32),
+            l2_prev.astype(np.float32),
+            l2_next.astype(np.float32),
+        ],
+        axis=1,
+    )
+
+
+def augment_sequences_with_position_features(
+    sequences: Sequence[SpeechSequence],
+) -> list[SpeechSequence]:
+    augmented: list[SpeechSequence] = []
+
+    for sequence in sequences:
+        position_features = build_position_features(sequence.length)
+        augmented.append(
+            SpeechSequence(
+                speech_id=sequence.speech_id,
+                sentence_ids=sequence.sentence_ids.copy(),
+                embeddings=np.concatenate(
+                    [
+                        np.asarray(sequence.embeddings, dtype=np.float32),
+                        position_features,
+                    ],
+                    axis=1,
+                ),
+                labels=None if sequence.labels is None else sequence.labels.copy(),
+            )
+        )
+
+    return augmented
+
+
+def augment_sequences_with_transition_features(
+    sequences: Sequence[SpeechSequence],
+) -> list[SpeechSequence]:
+    augmented: list[SpeechSequence] = []
+
+    for sequence in sequences:
+        transition_features = build_transition_features(sequence.embeddings)
+        augmented.append(
+            SpeechSequence(
+                speech_id=sequence.speech_id,
+                sentence_ids=sequence.sentence_ids.copy(),
+                embeddings=np.concatenate(
+                    [
+                        np.asarray(sequence.embeddings, dtype=np.float32),
+                        transition_features,
+                    ],
+                    axis=1,
+                ),
+                labels=None if sequence.labels is None else sequence.labels.copy(),
+            )
+        )
+
+    return augmented
 
 
 def load_embeddings_with_metadata(
@@ -239,8 +374,15 @@ def fit_single_span_prior(
     *,
     negative_label: int = -1,
     alpha: float = 1.0,
+    position_bins: int = 0,
 ) -> SingleSpanPrior:
     negative_span_lengths: list[int] = []
+    start_bin_counts = (
+        np.zeros(position_bins, dtype=np.float64) if position_bins > 0 else None
+    )
+    end_bin_counts = (
+        np.zeros(position_bins, dtype=np.float64) if position_bins > 0 else None
+    )
     no_span_count = 0
 
     for sequence in sequences:
@@ -259,6 +401,14 @@ def fit_single_span_prior(
         ends = np.where(change_points == -1)[0]
         lengths = ends - starts
         negative_span_lengths.append(int(lengths.max()))
+
+        if start_bin_counts is not None and end_bin_counts is not None:
+            span_start = int(starts[0])
+            span_end = int(ends[-1])
+            start_bin = _fraction_to_bin(span_start / sequence.length, position_bins)
+            end_bin = _fraction_to_bin(span_end / sequence.length, position_bins)
+            start_bin_counts[start_bin] += 1.0
+            end_bin_counts[end_bin] += 1.0
 
     span_count = len(negative_span_lengths)
     total_sequences = span_count + no_span_count
@@ -279,10 +429,24 @@ def fit_single_span_prior(
             (length_counts[span_length] + alpha) / smoothed_length_total
         )
 
+    start_bin_log_probs = None
+    end_bin_log_probs = None
+    if start_bin_counts is not None and end_bin_counts is not None:
+        start_bin_log_probs = np.log(
+            (start_bin_counts + alpha)
+            / (start_bin_counts.sum() + alpha * len(start_bin_counts))
+        )
+        end_bin_log_probs = np.log(
+            (end_bin_counts + alpha)
+            / (end_bin_counts.sum() + alpha * len(end_bin_counts))
+        )
+
     return SingleSpanPrior(
         no_span_log_prob=no_span_log_prob,
         span_log_prob=span_log_prob,
         span_length_log_probs=span_length_log_probs,
+        start_bin_log_probs=start_bin_log_probs,
+        end_bin_log_probs=end_bin_log_probs,
     )
 
 
@@ -293,6 +457,7 @@ def decode_single_negative_span(
     negative_index: int = 1,
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
+    position_prior_weight: float = 0.0,
 ) -> np.ndarray:
     if probabilities.ndim != 2 or probabilities.shape[1] < 2:
         raise ValueError(
@@ -320,6 +485,12 @@ def decode_single_negative_span(
             score = base_positive_score + prefix_delta[end] - prefix_delta[start]
             if prior is not None:
                 score += prior.span_log_prob + prior.get_span_length_log_prob(span_length)
+                if position_prior_weight:
+                    score += position_prior_weight * prior.get_position_log_prob(
+                        start,
+                        end,
+                        sequence_length=time_steps,
+                    )
             if score > best_score:
                 best_score = score
                 best_interval = (start, end)
@@ -337,6 +508,7 @@ def single_negative_span_posteriors(
     negative_index: int = 1,
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
+    position_prior_weight: float = 0.0,
 ) -> np.ndarray:
     if probabilities.ndim != 2 or probabilities.shape[1] < 2:
         raise ValueError(
@@ -365,6 +537,12 @@ def single_negative_span_posteriors(
             score = base_positive_score + prefix_delta[end] - prefix_delta[start]
             if prior is not None:
                 score += prior.span_log_prob + prior.get_span_length_log_prob(span_length)
+                if position_prior_weight:
+                    score += position_prior_weight * prior.get_position_log_prob(
+                        start,
+                        end,
+                        sequence_length=time_steps,
+                    )
             configuration_scores.append((score, (start, end)))
 
     scores = np.array([item[0] for item in configuration_scores], dtype=np.float64)
@@ -394,6 +572,7 @@ def decode_batch(
     decoder: str = "argmax",
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
+    position_prior_weight: float = 0.0,
 ) -> list[np.ndarray]:
     decoded_sequences: list[np.ndarray] = []
 
@@ -405,6 +584,7 @@ def decode_batch(
                 probabilities,
                 prior=prior,
                 min_span_length=min_span_length,
+                position_prior_weight=position_prior_weight,
             )
         else:
             raise ValueError(f"Unknown decoder: {decoder}")
@@ -419,6 +599,7 @@ def posterior_probabilities_by_sequence(
     decoder: str = "identity",
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
+    position_prior_weight: float = 0.0,
 ) -> list[np.ndarray]:
     posterior_sequences: list[np.ndarray] = []
 
@@ -430,6 +611,7 @@ def posterior_probabilities_by_sequence(
                 probabilities,
                 prior=prior,
                 min_span_length=min_span_length,
+                position_prior_weight=position_prior_weight,
             )
         else:
             raise ValueError(f"Unknown decoder: {decoder}")

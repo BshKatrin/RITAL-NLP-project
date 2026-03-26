@@ -15,6 +15,8 @@ from rital_nlp_project.presidents import (
     BiLSTMSequenceTagger,
     PRESIDENT_LABEL_ORDER,
     SpeechSequenceDataset,
+    augment_sequences_with_position_features,
+    augment_sequences_with_transition_features,
     build_speech_sequences,
     collate_speech_sequences,
     decode_batch,
@@ -88,6 +90,18 @@ def parse_args() -> argparse.Namespace:
         help="Minimum negative span length for the single-span decoder. Defaults to the checkpoint config value.",
     )
     parser.add_argument(
+        "--position-bins",
+        type=int,
+        default=None,
+        help="Number of normalized start/end bins used by the single-span prior. Defaults to the checkpoint config value.",
+    )
+    parser.add_argument(
+        "--position-prior-weight",
+        type=float,
+        default=None,
+        help="Weight applied to the span location prior during constrained decoding. Defaults to the checkpoint config value.",
+    )
+    parser.add_argument(
         "--device",
         default=default_device(),
         help="Inference device.",
@@ -140,6 +154,7 @@ def predictions_to_frame(
     *,
     prior,
     min_negative_span: int,
+    position_prior_weight: float,
 ) -> pd.DataFrame:
     sequence_probabilities = [
         item["probabilities"] for item in predictions  # type: ignore[index]
@@ -150,12 +165,14 @@ def predictions_to_frame(
         decoder="single_negative_span",
         prior=prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
     span_posteriors = posterior_probabilities_by_sequence(
         sequence_probabilities,
         decoder="single_negative_span",
         prior=prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
 
     frames = []
@@ -224,6 +241,18 @@ def main() -> None:
         args.min_negative_span
         or checkpoint_config.get("min_negative_span", 1)
     )
+    position_bins = (
+        args.position_bins
+        if args.position_bins is not None
+        else checkpoint_config.get("position_bins", 0)
+    )
+    position_prior_weight = (
+        args.position_prior_weight
+        if args.position_prior_weight is not None
+        else checkpoint_config.get("position_prior_weight", 0.0)
+    )
+    position_features = checkpoint_config.get("position_features", "none")
+    transition_features = bool(checkpoint_config.get("transition_features", False))
     device = torch.device(args.device)
 
     prior_embeddings, prior_metadata = load_embeddings_with_metadata(
@@ -231,7 +260,10 @@ def main() -> None:
         args.prior_metadata_path,
     )
     prior_sequences = build_speech_sequences(prior_embeddings, prior_metadata)
-    single_span_prior = fit_single_span_prior(prior_sequences)
+    single_span_prior = fit_single_span_prior(
+        prior_sequences,
+        position_bins=position_bins,
+    )
 
     test_embeddings, test_metadata = load_embeddings_with_metadata(
         args.test_embeddings_path,
@@ -239,9 +271,13 @@ def main() -> None:
         require_labels=False,
     )
     test_sequences = build_speech_sequences(test_embeddings, test_metadata)
+    if position_features != "none":
+        test_sequences = augment_sequences_with_position_features(test_sequences)
+    if transition_features:
+        test_sequences = augment_sequences_with_transition_features(test_sequences)
     model = load_model(
         checkpoint,
-        input_dim=int(test_embeddings.shape[1]),
+        input_dim=int(test_sequences[0].embeddings.shape[1]),
         device=device,
     )
     test_loader = create_loader(test_sequences, batch_size=batch_size)
@@ -254,6 +290,7 @@ def main() -> None:
         predictions,
         prior=single_span_prior,
         min_negative_span=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
 
     alignment = test_metadata[["speech_id", "sentence_id"]].reset_index(drop=True)
@@ -307,6 +344,10 @@ def main() -> None:
         "test_speeches": int(test_metadata["speech_id"].nunique()),
         "batch_size": batch_size,
         "min_negative_span": int(min_negative_span),
+        "position_bins": int(position_bins),
+        "position_prior_weight": float(position_prior_weight),
+        "position_features": position_features,
+        "transition_features": transition_features,
         "timing": {
             "started_at": started_at,
             "ended_at": ended_at,

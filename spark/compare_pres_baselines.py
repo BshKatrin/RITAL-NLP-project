@@ -54,6 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-iter", type=int, default=2000)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--min-negative-span", type=int, default=3)
+    parser.add_argument("--position-bins", type=int, default=0)
+    parser.add_argument("--position-prior-weight", type=float, default=0.0)
     parser.add_argument(
         "--selection-metric",
         choices=("f1_macro", "balanced_accuracy"),
@@ -92,12 +94,14 @@ def evaluate_predictions(
     decoder: str,
     prior=None,
     min_negative_span: int,
+    position_prior_weight: float,
 ):
     decoded = decode_batch(
         sequence_probabilities,
         decoder=decoder,
         prior=prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
 
     y_true = np.concatenate([sequence.labels for sequence in sequences], axis=0)
@@ -138,6 +142,7 @@ def predictions_to_frame(
     *,
     single_span_prior,
     min_negative_span: int,
+    position_prior_weight: float,
     gaussian_sigma_argmax: float,
     gaussian_sigma_span: float,
 ):
@@ -147,6 +152,7 @@ def predictions_to_frame(
         decoder="single_negative_span",
         prior=single_span_prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
     gaussian_probabilities = smooth_probabilities_by_sequence(
         raw_probabilities,
@@ -162,6 +168,7 @@ def predictions_to_frame(
         decoder="single_negative_span",
         prior=single_span_prior,
         min_span_length=min_negative_span,
+        position_prior_weight=position_prior_weight,
     )
 
     frames = []
@@ -234,7 +241,10 @@ def main() -> None:
     test_probabilities = predict_sequence_probabilities(baseline, test_sequences)
     inference_seconds = time.perf_counter() - inference_start
 
-    single_span_prior = fit_single_span_prior(train_sequences)
+    single_span_prior = fit_single_span_prior(
+        train_sequences,
+        position_bins=args.position_bins,
+    )
 
     validation_results = {
         "raw_argmax": evaluate_predictions(
@@ -243,6 +253,7 @@ def main() -> None:
             decoder="argmax",
             prior=None,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=0.0,
         ),
         "single_negative_span": evaluate_predictions(
             val_probabilities,
@@ -250,6 +261,7 @@ def main() -> None:
             decoder="single_negative_span",
             prior=single_span_prior,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=args.position_prior_weight,
         ),
     }
 
@@ -270,6 +282,7 @@ def main() -> None:
             decoder="argmax",
             prior=None,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=0.0,
         )
         gaussian_span_metrics = evaluate_predictions(
             smoothed_val_probabilities,
@@ -277,6 +290,7 @@ def main() -> None:
             decoder="single_negative_span",
             prior=single_span_prior,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=args.position_prior_weight,
         )
         sigma_grid_records.append(
             {
@@ -306,6 +320,7 @@ def main() -> None:
             decoder="argmax",
             prior=None,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=0.0,
         ),
         "single_negative_span": evaluate_predictions(
             test_probabilities,
@@ -313,6 +328,7 @@ def main() -> None:
             decoder="single_negative_span",
             prior=single_span_prior,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=args.position_prior_weight,
         ),
         "gaussian_argmax": evaluate_predictions(
             smooth_probabilities_by_sequence(test_probabilities, sigma=best_gaussian_sigma),
@@ -320,6 +336,7 @@ def main() -> None:
             decoder="argmax",
             prior=None,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=0.0,
         ),
         "gaussian_single_negative_span": evaluate_predictions(
             smooth_probabilities_by_sequence(
@@ -330,6 +347,7 @@ def main() -> None:
             decoder="single_negative_span",
             prior=single_span_prior,
             min_negative_span=args.min_negative_span,
+            position_prior_weight=args.position_prior_weight,
         ),
     }
 
@@ -373,6 +391,7 @@ def main() -> None:
         test_probabilities,
         single_span_prior=single_span_prior,
         min_negative_span=args.min_negative_span,
+        position_prior_weight=args.position_prior_weight,
         gaussian_sigma_argmax=best_gaussian_sigma,
         gaussian_sigma_span=best_gaussian_span_sigma,
     ).to_csv(output_dir / "test_predictions.csv", index=False)
