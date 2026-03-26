@@ -102,6 +102,12 @@ def parse_args() -> argparse.Namespace:
         help="Weight applied to the span location prior during constrained decoding. Defaults to the checkpoint config value.",
     )
     parser.add_argument(
+        "--no-span-bias",
+        type=float,
+        default=0.0,
+        help="Extra log-bias added to the no-span configuration during constrained decoding. Positive values make the submission more conservative.",
+    )
+    parser.add_argument(
         "--device",
         default=default_device(),
         help="Inference device.",
@@ -155,6 +161,7 @@ def predictions_to_frame(
     prior,
     min_negative_span: int,
     position_prior_weight: float,
+    no_span_bias: float,
 ) -> pd.DataFrame:
     sequence_probabilities = [
         item["probabilities"] for item in predictions  # type: ignore[index]
@@ -166,6 +173,7 @@ def predictions_to_frame(
         prior=prior,
         min_span_length=min_negative_span,
         position_prior_weight=position_prior_weight,
+        no_span_bias=no_span_bias,
     )
     span_posteriors = posterior_probabilities_by_sequence(
         sequence_probabilities,
@@ -173,6 +181,7 @@ def predictions_to_frame(
         prior=prior,
         min_span_length=min_negative_span,
         position_prior_weight=position_prior_weight,
+        no_span_bias=no_span_bias,
     )
 
     frames = []
@@ -291,6 +300,7 @@ def main() -> None:
         prior=single_span_prior,
         min_negative_span=min_negative_span,
         position_prior_weight=position_prior_weight,
+        no_span_bias=args.no_span_bias,
     )
 
     alignment = test_metadata[["speech_id", "sentence_id"]].reset_index(drop=True)
@@ -346,6 +356,7 @@ def main() -> None:
         "min_negative_span": int(min_negative_span),
         "position_bins": int(position_bins),
         "position_prior_weight": float(position_prior_weight),
+        "no_span_bias": float(args.no_span_bias),
         "position_features": position_features,
         "transition_features": transition_features,
         "timing": {

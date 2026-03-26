@@ -458,6 +458,7 @@ def decode_single_negative_span(
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
     position_prior_weight: float = 0.0,
+    no_span_bias: float = 0.0,
 ) -> np.ndarray:
     if probabilities.ndim != 2 or probabilities.shape[1] < 2:
         raise ValueError(
@@ -472,7 +473,7 @@ def decode_single_negative_span(
 
     best_score = base_positive_score
     if prior is not None:
-        best_score += prior.no_span_log_prob
+        best_score += prior.no_span_log_prob + no_span_bias
 
     best_interval: tuple[int, int] | None = None
     prefix_delta = np.r_[0.0, np.cumsum(
@@ -509,6 +510,7 @@ def single_negative_span_posteriors(
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
     position_prior_weight: float = 0.0,
+    no_span_bias: float = 0.0,
 ) -> np.ndarray:
     if probabilities.ndim != 2 or probabilities.shape[1] < 2:
         raise ValueError(
@@ -526,7 +528,7 @@ def single_negative_span_posteriors(
 
     configuration_scores = [(
         base_positive_score + (
-            0.0 if prior is None else prior.no_span_log_prob
+            0.0 if prior is None else prior.no_span_log_prob + no_span_bias
         ),
         None,
     )]
@@ -573,6 +575,7 @@ def decode_batch(
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
     position_prior_weight: float = 0.0,
+    no_span_bias: float = 0.0,
 ) -> list[np.ndarray]:
     decoded_sequences: list[np.ndarray] = []
 
@@ -585,6 +588,7 @@ def decode_batch(
                 prior=prior,
                 min_span_length=min_span_length,
                 position_prior_weight=position_prior_weight,
+                no_span_bias=no_span_bias,
             )
         else:
             raise ValueError(f"Unknown decoder: {decoder}")
@@ -600,6 +604,7 @@ def posterior_probabilities_by_sequence(
     prior: SingleSpanPrior | None = None,
     min_span_length: int = 1,
     position_prior_weight: float = 0.0,
+    no_span_bias: float = 0.0,
 ) -> list[np.ndarray]:
     posterior_sequences: list[np.ndarray] = []
 
@@ -612,6 +617,7 @@ def posterior_probabilities_by_sequence(
                 prior=prior,
                 min_span_length=min_span_length,
                 position_prior_weight=position_prior_weight,
+                no_span_bias=no_span_bias,
             )
         else:
             raise ValueError(f"Unknown decoder: {decoder}")
