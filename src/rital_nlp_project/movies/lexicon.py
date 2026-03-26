@@ -25,3 +25,5 @@ PHONE_PATTERN = re.compile(r"""
                             (?:\d[\s\-\.]?){6,10}      # remaining digits
                             (?!\w)               # not followed by a word char
                             """)
+
+EXTRA_SUB = [(r"<br\\s*/?>", " ")]

@@ -7,7 +7,7 @@ from tqdm import tqdm
 OUTPUT_DIR = Path("models")
 
 URLS = [
-    "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.fr.300.bin.gz",
+    #"https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.fr.300.bin.gz",
     "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.bin.gz",
 ]
 

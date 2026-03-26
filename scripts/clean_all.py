@@ -2,7 +2,7 @@
 import argparse
 import time
 
-from rital_nlp_project.common.utils import load_pres, load_movies, clean_dataset
+from rital_nlp_project.common.utils import load_pres, load_movies, clean_dataset, load_txt
 from rital_nlp_project.common.preprocess.stopwords import STOPWORDS
 
 from rital_nlp_project.movies.transformer import TextPreprocessor as TextPreprocessorMovies
@@ -31,19 +31,16 @@ def parse_args() -> argparse.Namespace:
         help="Preprocessing mode to use: 'classic' (BoW/TF-IDF) or 'bert'. Default: classic.",
     )
 
-    # parser.add_argument(
-    #     "--special-tokens-mode",
-    #     choices=["space", "tokens"],
-    #     default=None,  # if None, derive it from pipeline_mode
-    #     help="How to handle special tokens (emails/URLs/phones): "
-    #          "'space' to remove them, 'tokens' to replace with <EMAIL>/<URL>/<PHONE>. "
-    #          "Default: derived from --pipeline-mode (bert -> tokens, classic -> space).",
-    # )
-
     parser.add_argument(
         "--output-path",
         default=None,
         help="Output path for cleaned dataset."
+    )
+
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Clean test file"
     )
 
     return parser.parse_args()
@@ -58,9 +55,9 @@ def clean_movies(args):
         stopwords=STOPWORDS["english"],
         pipeline_mode=args.pipeline_mode,
     )
-
+    load_fn = load_txt if args.test else load_movies 
     t0 = time.time()
-    clean_dataset(load_movies, args.input_path, args.output_path, preprocessor)
+    clean_dataset(load_fn, args.input_path, args.output_path, preprocessor, args.test)
     t0 = time.time() - t0
     print(f"Finished cleaning movies. Took {t0} seconds.")
 
@@ -86,7 +83,6 @@ if __name__ == "__main__":
     args = parse_args()
 
     dataset = args.dataset
-    print(dataset)
     if dataset == "movies":
         clean_movies(args)
 
