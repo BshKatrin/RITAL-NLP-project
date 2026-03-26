@@ -330,6 +330,64 @@ def decode_single_negative_span(
     return predictions
 
 
+def single_negative_span_posteriors(
+    probabilities: np.ndarray,
+    *,
+    positive_index: int = 0,
+    negative_index: int = 1,
+    prior: SingleSpanPrior | None = None,
+    min_span_length: int = 1,
+) -> np.ndarray:
+    if probabilities.ndim != 2 or probabilities.shape[1] < 2:
+        raise ValueError(
+            "probabilities must be a 2D array shaped [time, num_labels>=2]"
+        )
+    if min_span_length <= 0:
+        raise ValueError("min_span_length must be strictly positive")
+
+    log_probs = np.log(np.clip(probabilities, 1e-9, 1.0))
+    time_steps = log_probs.shape[0]
+    base_positive_score = float(log_probs[:, positive_index].sum())
+    prefix_delta = np.r_[0.0, np.cumsum(
+        log_probs[:, negative_index] - log_probs[:, positive_index]
+    )]
+
+    configuration_scores = [(
+        base_positive_score + (
+            0.0 if prior is None else prior.no_span_log_prob
+        ),
+        None,
+    )]
+
+    for start in range(time_steps):
+        for end in range(start + min_span_length, time_steps + 1):
+            span_length = end - start
+            score = base_positive_score + prefix_delta[end] - prefix_delta[start]
+            if prior is not None:
+                score += prior.span_log_prob + prior.get_span_length_log_prob(span_length)
+            configuration_scores.append((score, (start, end)))
+
+    scores = np.array([item[0] for item in configuration_scores], dtype=np.float64)
+    max_score = float(scores.max())
+    weights = np.exp(scores - max_score)
+    weights /= weights.sum()
+
+    negative_posteriors = np.zeros(time_steps, dtype=np.float64)
+    for weight, (_, interval) in zip(weights, configuration_scores, strict=True):
+        if interval is None:
+            continue
+        start, end = interval
+        negative_posteriors[start:end] += weight
+
+    positive_posteriors = 1.0 - negative_posteriors
+    posteriors = np.asarray(probabilities, dtype=np.float64).copy()
+    posteriors[:, positive_index] = positive_posteriors
+    posteriors[:, negative_index] = negative_posteriors
+    row_sums = posteriors.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    return posteriors / row_sums
+
+
 def decode_batch(
     sequence_probabilities: Iterable[np.ndarray],
     *,
@@ -353,6 +411,31 @@ def decode_batch(
         decoded_sequences.append(decoded)
 
     return decoded_sequences
+
+
+def posterior_probabilities_by_sequence(
+    sequence_probabilities: Iterable[np.ndarray],
+    *,
+    decoder: str = "identity",
+    prior: SingleSpanPrior | None = None,
+    min_span_length: int = 1,
+) -> list[np.ndarray]:
+    posterior_sequences: list[np.ndarray] = []
+
+    for probabilities in sequence_probabilities:
+        if decoder == "identity":
+            posteriors = np.asarray(probabilities, dtype=np.float64).copy()
+        elif decoder == "single_negative_span":
+            posteriors = single_negative_span_posteriors(
+                probabilities,
+                prior=prior,
+                min_span_length=min_span_length,
+            )
+        else:
+            raise ValueError(f"Unknown decoder: {decoder}")
+        posterior_sequences.append(posteriors)
+
+    return posterior_sequences
 
 
 def smooth_probabilities_by_sequence(
