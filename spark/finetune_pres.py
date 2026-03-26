@@ -1,7 +1,9 @@
 from transformers import Trainer, TrainingArguments
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
 import torch
+import numpy as np
 from torch.optim import AdamW
+from torch.nn import CrossEntropyLoss
 
 import os
 import mlflow
@@ -9,7 +11,27 @@ import mlflow
 
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.presidents.models_utils import split_fn
-from rital_nlp_project.common.models.finetune_utils import prepare_train_test, compute_metrics, tokenize_head, concat_neighbours
+from rital_nlp_project.common.models.finetune_utils import prepare_train_test, compute_metrics, tokenize_head
+
+
+class WeightedTrainer(Trainer):
+    def __init__(self, *args, class_weights=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.class_weights = class_weights
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.get("logits")
+
+        if self.class_weights is not None:
+            class_weights = self.class_weights.to(logits.device)
+            loss_fn = CrossEntropyLoss(weight=class_weights)
+        else:
+            loss_fn = CrossEntropyLoss()
+
+        loss = loss_fn(logits.view(-1, model.config.num_labels), labels.view(-1))
+        return (loss, outputs) if return_outputs else loss
 
 train_dataset = prepare_train_test(load_clean_data, "Dataset/clean/presidents_clean_bert.parquet", split_fn=None)
 
@@ -63,12 +85,12 @@ trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_g
 all_parameters = sum(p.numel() for p in model.parameters())
 print(f"Trainable parameters: {trainable_parameters}/{all_parameters}")
 
-train_dataset = train_dataset.map(
-    lambda example, idx: concat_neighbours(example, idx, train_dataset, tokenizer),
-    with_indices=True
-)
-train_dataset = train_dataset.remove_columns(["text"])
-train_dataset = train_dataset.rename_column("text_with_context", "text")
+# train_dataset = train_dataset.map(
+#     lambda example, idx: concat_neighbours(example, idx, train_dataset, tokenizer),
+#     with_indices=True
+# )
+# train_dataset = train_dataset.remove_columns(["text"])
+# train_dataset = train_dataset.rename_column("text_with_context", "text")
 
 print(train_dataset[0])
 print(train_dataset[1])
@@ -92,6 +114,15 @@ print(train_dataset[0])
 #     #remove_columns=test_dataset.column_names,
 # )
 
+label_counts = np.bincount(train_dataset["label"], minlength=2)
+safe_counts = np.where(label_counts == 0, 1, label_counts)
+class_weights = torch.tensor(
+    len(train_dataset) / (len(safe_counts) * safe_counts),
+    dtype=torch.float,
+)
+print("Label counts:", label_counts.tolist())
+print("Class weights:", class_weights.tolist())
+
 
 train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
 #test_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
@@ -112,7 +143,7 @@ training_args = TrainingArguments(
     learning_rate=5e-6,
     per_device_train_batch_size=16,
     per_device_eval_batch_size=16,
-    num_train_epochs=5,
+    num_train_epochs=3,
     #weight_decay=0.01,
     load_best_model_at_end=False,
     max_grad_norm=0.5,
@@ -132,16 +163,17 @@ optimizer_grouped_parameters = [
     },
 ]
 
-trainer = Trainer(
+trainer = WeightedTrainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset,
     # eval_dataset=test_dataset,
     data_collator=DataCollatorWithPadding(tokenizer=tokenizer, return_tensors="pt"),
     optimizers=(AdamW(optimizer_grouped_parameters, lr=5e-6, eps=1e-6), None), 
+    class_weights=class_weights,
 )
 
 trainer.train()
-trainer.save_model("Dataset/finetune/model_camembert")
-tokenizer.save_pretrained("Dataset/finetune/tokenizer_camembert")
+trainer.save_model("Dataset/finetune/model_camembert_head")
+tokenizer.save_pretrained("Dataset/finetune/tokenizer_camembert_head")
 mlflow.end_run()
