@@ -17,9 +17,10 @@ def load_with_numbers(input_path, output_path=None):
                 doc_id = int(match.group(1))   # first number
                 text = match.group(2)          # the text after >
 
-                data.append((doc_id, text))
+                #data.append((doc_id, text))
+                data.append(text)
 
-    df = pd.DataFrame(data, columns=["label", "text"])
+    df = pd.DataFrame(data, columns=["text"])
     if output_path is None:
         return df
 
