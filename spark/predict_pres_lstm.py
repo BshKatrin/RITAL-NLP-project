@@ -392,14 +392,10 @@ def main() -> None:
             if score_delta is None
             else score_delta
         )
-        decision_threshold = (
-            recommended_calibration.get(
-                "best_threshold",
-                recommended_calibration.get("threshold"),
-            )
-            if decision_threshold is None
-            else decision_threshold
-        )
+        # The CV script stores the original best threshold and its equivalent
+        # logit-space shift. Once we apply the shift to the scores, the matching
+        # hard-decision threshold becomes 0.5 on the calibrated probabilities.
+        decision_threshold = 0.5 if decision_threshold is None else decision_threshold
         selected_score_name = calibration.get(
             "selected_score_name",
             selected_score_name,
