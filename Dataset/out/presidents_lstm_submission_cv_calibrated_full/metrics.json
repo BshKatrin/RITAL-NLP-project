@@ -1,0 +1,47 @@
+{
+  "checkpoint_path": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_full_data_19ep/presidents_lstm.pt",
+  "checkpoint_output_dir": "Dataset/out/presidents_lstm_full_data_19ep",
+  "device": "mps",
+  "test_rows": 27162,
+  "test_speeches": 294,
+  "batch_size": 8,
+  "min_negative_span": 3,
+  "position_bins": 5,
+  "position_prior_weight": 0.25,
+  "no_span_bias": 0.0,
+  "position_features": "none",
+  "transition_features": false,
+  "timing": {
+    "started_at": "2026-03-27T02:05:32.572278+01:00",
+    "ended_at": "2026-03-27T02:05:42.192874+01:00",
+    "total_seconds": 9.620551542000612,
+    "inference_seconds": 2.9149267499960843
+  },
+  "outputs": {
+    "detailed_predictions": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/test_predictions_detailed.csv",
+    "submission_prob_raw_positive": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_prob_raw_positive.csv",
+    "submission_prob_raw_positive_inverted": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_prob_raw_positive_inverted.csv",
+    "submission_prob_single_negative_span": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_prob_single_negative_span.csv",
+    "submission_prob_single_negative_span_inverted": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_prob_single_negative_span_inverted.csv",
+    "submission_label_single_negative_span": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_label_single_negative_span.csv"
+  },
+  "calibration": {
+    "calibration_path": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_cv_calibration_full/calibration.json",
+    "selected_score_name": "prob_mitterrand_raw",
+    "score_delta": 1.6582280766035298,
+    "decision_threshold": 0.5,
+    "original_threshold": 0.8399999999999996,
+    "calibrated_label_counts": {
+      "C": 23673,
+      "M": 3489
+    }
+  },
+  "calibrated_outputs": {
+    "submission_prob_calibrated": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_prob_raw_positive_inverted_calibrated.csv",
+    "submission_label_calibrated": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_submission_cv_calibrated_full/submission_label_calibrated.csv"
+  },
+  "label_counts": {
+    "C": 23076,
+    "M": 4086
+  }
+}

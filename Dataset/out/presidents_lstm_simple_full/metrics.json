@@ -1,0 +1,111 @@
+{
+  "config": {
+    "embeddings_path": "Dataset/embeddings/presidents_camembert_base_mean.npy",
+    "metadata_path": "Dataset/clean/presidents_clean_bert.parquet",
+    "output_dir": "Dataset/out/presidents_lstm_simple_full",
+    "validation_size": 0.15,
+    "n_folds": 5,
+    "hidden_dim": 128,
+    "projection_dim": 256,
+    "num_layers": 1,
+    "dropout": 0.2,
+    "batch_size": 8,
+    "epochs": 20,
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "gradient_clip": 1.0,
+    "threshold_start": 0.05,
+    "threshold_end": 0.95,
+    "threshold_step": 0.005,
+    "seed": 42,
+    "device": "mps",
+    "max_speeches": null
+  },
+  "device": "mps",
+  "started_at": "2026-03-28T01:19:47.882550+01:00",
+  "ended_at": "2026-03-28T01:54:46.014701+01:00",
+  "total_seconds": 2098.1247542079946,
+  "num_sequences": 587,
+  "num_rows": 57413,
+  "train_speeches": 498,
+  "validation_speeches": 89,
+  "best_epoch": 20,
+  "best_validation_f1_macro": 0.9278382981743343,
+  "validation_metrics_at_0p5": {
+    "accuracy": 0.968419830488796,
+    "balanced_accuracy": 0.9278382981743343,
+    "f1_macro": 0.9278382981743343
+  },
+  "default_threshold_metrics": {
+    "selected_score_name": "prob_mitterrand_raw",
+    "accuracy": 0.9593994391514117,
+    "balanced_accuracy": 0.940855138515954,
+    "f1_macro": 0.9158426631309599
+  },
+  "recommended_calibration": {
+    "selected_score_name": "prob_mitterrand_raw",
+    "best_threshold": 0.8749999999999996,
+    "equivalent_score_delta": 1.9459101490553092,
+    "oof_metrics_at_0p5": {
+      "accuracy": 0.9593994391514117,
+      "balanced_accuracy": 0.940855138515954,
+      "f1_macro": 0.9158426631309599
+    },
+    "oof_metrics_at_best_threshold": {
+      "threshold": 0.8749999999999996,
+      "accuracy": 0.9678470032919374,
+      "balanced_accuracy": 0.9203739133977245,
+      "f1_macro": 0.928100964633628,
+      "mitterrand_count": 7203,
+      "chirac_count": 50210
+    },
+    "best_epoch": 20,
+    "n_folds": 5
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "train_speeches": 469,
+      "test_speeches": 118,
+      "epochs": 20,
+      "fold_seconds": 284.51533283299796
+    },
+    {
+      "fold": 2,
+      "train_speeches": 469,
+      "test_speeches": 118,
+      "epochs": 20,
+      "fold_seconds": 282.08824574999744
+    },
+    {
+      "fold": 3,
+      "train_speeches": 470,
+      "test_speeches": 117,
+      "epochs": 20,
+      "fold_seconds": 295.0531945410039
+    },
+    {
+      "fold": 4,
+      "train_speeches": 470,
+      "test_speeches": 117,
+      "epochs": 20,
+      "fold_seconds": 290.3354118750067
+    },
+    {
+      "fold": 5,
+      "train_speeches": 470,
+      "test_speeches": 117,
+      "epochs": 20,
+      "fold_seconds": 275.4070976669973
+    }
+  ],
+  "timing": {
+    "final_model_seconds": 340.79766137499973
+  },
+  "outputs": {
+    "checkpoint": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_simple_full/checkpoint.pt",
+    "calibration": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_simple_full/calibration.json",
+    "oof_predictions": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_simple_full/oof_predictions.csv",
+    "threshold_sweep": "/Users/glouno/sourceCode/RITAL-NLP-project/Dataset/out/presidents_lstm_simple_full/threshold_sweep.csv"
+  }
+}

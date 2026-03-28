@@ -1,0 +1,20 @@
+{
+  "selected_score_name": "prob_mitterrand_raw",
+  "best_threshold": 0.8749999999999996,
+  "equivalent_score_delta": 1.9459101490553092,
+  "oof_metrics_at_0p5": {
+    "accuracy": 0.9593994391514117,
+    "balanced_accuracy": 0.940855138515954,
+    "f1_macro": 0.9158426631309599
+  },
+  "oof_metrics_at_best_threshold": {
+    "threshold": 0.8749999999999996,
+    "accuracy": 0.9678470032919374,
+    "balanced_accuracy": 0.9203739133977245,
+    "f1_macro": 0.928100964633628,
+    "mitterrand_count": 7203,
+    "chirac_count": 50210
+  },
+  "best_epoch": 20,
+  "n_folds": 5
+}

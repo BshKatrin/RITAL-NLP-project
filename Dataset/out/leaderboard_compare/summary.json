@@ -1,0 +1,109 @@
+{
+  "orientation_choice": {
+    "agreement_to_top_inverted": 0.9525808114277299,
+    "agreement_to_top_noninverted": 0.047419188572270086,
+    "agreement_to_low_inverted": 0.9510713496796995,
+    "agreement_to_low_noninverted": 0.04892865032030042
+  },
+  "pairwise": {
+    "lb_86_5": {
+      "lb_88_279": {
+        "agreement_rate": 0.9647669538325602,
+        "disagreement_count": 957,
+        "a_positive_count": 3440,
+        "b_positive_count": 3267
+      },
+      "ours_inv": {
+        "agreement_rate": 0.9510713496796995,
+        "disagreement_count": 1329,
+        "a_positive_count": 3440,
+        "b_positive_count": 4117
+      },
+      "ours_noninv": {
+        "agreement_rate": 0.04892865032030042,
+        "disagreement_count": 25833,
+        "a_positive_count": 3440,
+        "b_positive_count": 23045
+      }
+    },
+    "lb_88_279": {
+      "lb_86_5": {
+        "agreement_rate": 0.9647669538325602,
+        "disagreement_count": 957,
+        "a_positive_count": 3267,
+        "b_positive_count": 3440
+      },
+      "ours_inv": {
+        "agreement_rate": 0.9525808114277299,
+        "disagreement_count": 1288,
+        "a_positive_count": 3267,
+        "b_positive_count": 4117
+      },
+      "ours_noninv": {
+        "agreement_rate": 0.047419188572270086,
+        "disagreement_count": 25874,
+        "a_positive_count": 3267,
+        "b_positive_count": 23045
+      }
+    },
+    "ours_inv": {
+      "lb_86_5": {
+        "agreement_rate": 0.9510713496796995,
+        "disagreement_count": 1329,
+        "a_positive_count": 4117,
+        "b_positive_count": 3440
+      },
+      "lb_88_279": {
+        "agreement_rate": 0.9525808114277299,
+        "disagreement_count": 1288,
+        "a_positive_count": 4117,
+        "b_positive_count": 3267
+      },
+      "ours_noninv": {
+        "agreement_rate": 0.0,
+        "disagreement_count": 27162,
+        "a_positive_count": 4117,
+        "b_positive_count": 23045
+      }
+    },
+    "ours_noninv": {
+      "lb_86_5": {
+        "agreement_rate": 0.04892865032030042,
+        "disagreement_count": 25833,
+        "a_positive_count": 23045,
+        "b_positive_count": 3440
+      },
+      "lb_88_279": {
+        "agreement_rate": 0.047419188572270086,
+        "disagreement_count": 25874,
+        "a_positive_count": 23045,
+        "b_positive_count": 3267
+      },
+      "ours_inv": {
+        "agreement_rate": 0.0,
+        "disagreement_count": 27162,
+        "a_positive_count": 23045,
+        "b_positive_count": 4117
+      }
+    }
+  },
+  "top_vs_low": {
+    "disagreement_count": 957,
+    "agreement_rate": 0.9647669538325602,
+    "top_positive_count": 3267,
+    "low_positive_count": 3440
+  },
+  "ours_vs_top_low_disagreement_subset": {
+    "rows": 957,
+    "relation_counts": {
+      "match_top_only": 499,
+      "match_low_only": 458
+    },
+    "match_top_share_of_two_way_matches": 0.5214211076280042,
+    "score_proxy_linear": 87.42760815047022,
+    "score_proxy_conservative_range": [
+      87.42760815047022,
+      87.42760815047022
+    ]
+  }
+}
