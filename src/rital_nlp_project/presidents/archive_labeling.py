@@ -3,14 +3,18 @@ from __future__ import annotations
 import html
 import json
 import math
+import multiprocessing as mp
 import re
+import sys
+import time
 import xml.etree.ElementTree as ET
-from collections import Counter
+from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 from urllib.parse import urlparse
 
 import numpy as np
@@ -270,6 +274,19 @@ class RowMatch:
     block_id: str | None
     model_disagreement: bool
     triage_priority: float
+
+
+@dataclass(frozen=True)
+class BlockScoringConfig:
+    top_k: int
+    min_score: float
+    min_margin: float
+    min_sentence_hits: int
+
+
+_BLOCK_SCORING_MATCHER: "ArchiveMatcher | None" = None
+_BLOCK_SCORING_BLOCKS: tuple[QueryBlock, ...] = ()
+_BLOCK_SCORING_CONFIG: BlockScoringConfig | None = None
 
 
 def html_to_text(fragment: str) -> str:
@@ -680,6 +697,249 @@ class ArchiveMatcher:
             for idx in top_indices
             if float(similarities[idx]) > 0.0
         ]
+
+
+def _emit_progress_event(event: str, **payload: object) -> None:
+    print(json.dumps({"event": event, **payload}), flush=True)
+
+
+def _default_block_chunksize(total_blocks: int, workers: int) -> int:
+    if total_blocks <= 0:
+        return 1
+    return max(1, min(total_blocks, math.ceil(total_blocks / max(workers * 8, 1))))
+
+
+def _iter_block_ranges(
+    total_blocks: int,
+    *,
+    chunksize: int,
+) -> list[tuple[int, int]]:
+    if total_blocks <= 0:
+        return []
+    return [
+        (start, min(total_blocks, start + chunksize))
+        for start in range(0, total_blocks, chunksize)
+    ]
+
+
+def _init_block_scoring_worker(
+    docs: tuple[ArchiveDoc, ...] | None,
+    blocks: tuple[QueryBlock, ...] | None,
+    config: BlockScoringConfig,
+) -> None:
+    global _BLOCK_SCORING_MATCHER, _BLOCK_SCORING_BLOCKS, _BLOCK_SCORING_CONFIG
+    if _BLOCK_SCORING_MATCHER is None:
+        if docs is None:
+            raise ArchiveLabelingError("Worker matcher state was not initialized")
+        _BLOCK_SCORING_MATCHER = ArchiveMatcher(docs)
+    if not _BLOCK_SCORING_BLOCKS:
+        if blocks is None:
+            raise ArchiveLabelingError("Worker block state was not initialized")
+        _BLOCK_SCORING_BLOCKS = tuple(blocks)
+    _BLOCK_SCORING_CONFIG = config
+
+
+def _score_block_range(block_range: tuple[int, int]) -> list[CandidateMatch]:
+    matcher = _BLOCK_SCORING_MATCHER
+    config = _BLOCK_SCORING_CONFIG
+    if matcher is None or config is None or not _BLOCK_SCORING_BLOCKS:
+        raise ArchiveLabelingError("Block scoring worker state is unavailable")
+
+    start_idx, end_idx = block_range
+    matches: list[CandidateMatch] = []
+    for block_idx in range(start_idx, end_idx):
+        matches.extend(
+            score_block_candidates(
+                matcher,
+                _BLOCK_SCORING_BLOCKS[block_idx],
+                top_k=config.top_k,
+                min_score=config.min_score,
+                min_margin=config.min_margin,
+                min_sentence_hits=config.min_sentence_hits,
+            )
+        )
+    return matches
+
+
+def _score_blocks_serial(
+    matcher: ArchiveMatcher,
+    blocks: Sequence[QueryBlock],
+    *,
+    config: BlockScoringConfig,
+    progress_every_blocks: int,
+    log_prefix: str,
+) -> list[CandidateMatch]:
+    total_blocks = len(blocks)
+    started_at = time.monotonic()
+    _emit_progress_event(
+        "block_scoring_start",
+        stage=log_prefix,
+        mode="serial",
+        workers=1,
+        total_blocks=total_blocks,
+    )
+
+    matches: list[CandidateMatch] = []
+    next_progress = progress_every_blocks if progress_every_blocks > 0 else None
+    for index, block in enumerate(blocks, start=1):
+        matches.extend(
+            score_block_candidates(
+                matcher,
+                block,
+                top_k=config.top_k,
+                min_score=config.min_score,
+                min_margin=config.min_margin,
+                min_sentence_hits=config.min_sentence_hits,
+            )
+        )
+        if next_progress is not None and index >= next_progress:
+            elapsed_seconds = time.monotonic() - started_at
+            _emit_progress_event(
+                "block_scoring_progress",
+                stage=log_prefix,
+                mode="serial",
+                workers=1,
+                completed_blocks=index,
+                total_blocks=total_blocks,
+                elapsed_seconds=round(elapsed_seconds, 3),
+                blocks_per_second=round(index / elapsed_seconds, 3) if elapsed_seconds > 0 else None,
+            )
+            while next_progress is not None and index >= next_progress:
+                next_progress += progress_every_blocks
+
+    elapsed_seconds = time.monotonic() - started_at
+    _emit_progress_event(
+        "block_scoring_complete",
+        stage=log_prefix,
+        mode="serial",
+        workers=1,
+        total_blocks=total_blocks,
+        candidate_matches=len(matches),
+        elapsed_seconds=round(elapsed_seconds, 3),
+        blocks_per_second=round(total_blocks / elapsed_seconds, 3) if elapsed_seconds > 0 else None,
+    )
+    return matches
+
+
+def score_blocks(
+    matcher: ArchiveMatcher,
+    blocks: Sequence[QueryBlock],
+    *,
+    top_k: int,
+    min_score: float,
+    min_margin: float,
+    min_sentence_hits: int,
+    workers: int = 1,
+    chunksize: int | None = None,
+    progress_every_blocks: int = 250,
+    log_prefix: str = "archive_matching",
+) -> list[CandidateMatch]:
+    config = BlockScoringConfig(
+        top_k=int(top_k),
+        min_score=float(min_score),
+        min_margin=float(min_margin),
+        min_sentence_hits=int(min_sentence_hits),
+    )
+    blocks = tuple(blocks)
+    total_blocks = len(blocks)
+    if total_blocks == 0:
+        return []
+
+    workers = max(int(workers), 1)
+    progress_every_blocks = max(int(progress_every_blocks), 0)
+    if workers == 1:
+        return _score_blocks_serial(
+            matcher,
+            blocks,
+            config=config,
+            progress_every_blocks=progress_every_blocks,
+            log_prefix=log_prefix,
+        )
+
+    if chunksize is None:
+        chunksize = _default_block_chunksize(total_blocks, workers)
+    chunksize = max(int(chunksize), 1)
+    block_ranges = _iter_block_ranges(total_blocks, chunksize=chunksize)
+
+    mp_context = mp.get_context("fork") if "fork" in mp.get_all_start_methods() else mp.get_context()
+    using_fork = mp_context.get_start_method() == "fork"
+
+    global _BLOCK_SCORING_MATCHER, _BLOCK_SCORING_BLOCKS, _BLOCK_SCORING_CONFIG
+    _BLOCK_SCORING_MATCHER = matcher if using_fork else None
+    _BLOCK_SCORING_BLOCKS = tuple(blocks) if using_fork else ()
+    _BLOCK_SCORING_CONFIG = config if using_fork else None
+
+    docs_payload = None if using_fork else tuple(matcher.docs)
+    blocks_payload = None if using_fork else tuple(blocks)
+
+    started_at = time.monotonic()
+    _emit_progress_event(
+        "block_scoring_start",
+        stage=log_prefix,
+        mode="parallel",
+        workers=workers,
+        start_method=mp_context.get_start_method(),
+        total_blocks=total_blocks,
+        chunksize=chunksize,
+        total_chunks=len(block_ranges),
+        optimized_for_linux_fork=using_fork and sys.platform.startswith("linux"),
+    )
+
+    completed_blocks = 0
+    next_progress = progress_every_blocks if progress_every_blocks > 0 else None
+    matches_by_chunk: dict[int, list[CandidateMatch]] = {}
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        mp_context=mp_context,
+        initializer=_init_block_scoring_worker,
+        initargs=(docs_payload, blocks_payload, config),
+    ) as executor:
+        future_to_chunk = {
+            executor.submit(_score_block_range, block_range): chunk_idx
+            for chunk_idx, block_range in enumerate(block_ranges)
+        }
+        for future in as_completed(future_to_chunk):
+            chunk_idx = future_to_chunk[future]
+            matches_by_chunk[chunk_idx] = future.result()
+            range_start, range_end = block_ranges[chunk_idx]
+            completed_blocks += range_end - range_start
+            if next_progress is not None and completed_blocks >= next_progress:
+                elapsed_seconds = time.monotonic() - started_at
+                _emit_progress_event(
+                    "block_scoring_progress",
+                    stage=log_prefix,
+                    mode="parallel",
+                    workers=workers,
+                    completed_blocks=completed_blocks,
+                    total_blocks=total_blocks,
+                    completed_chunks=len(matches_by_chunk),
+                    total_chunks=len(block_ranges),
+                    elapsed_seconds=round(elapsed_seconds, 3),
+                    blocks_per_second=round(completed_blocks / elapsed_seconds, 3)
+                    if elapsed_seconds > 0
+                    else None,
+                )
+                while next_progress is not None and completed_blocks >= next_progress:
+                    next_progress += progress_every_blocks
+
+    matches: list[CandidateMatch] = []
+    for chunk_idx in range(len(block_ranges)):
+        matches.extend(matches_by_chunk[chunk_idx])
+
+    elapsed_seconds = time.monotonic() - started_at
+    _emit_progress_event(
+        "block_scoring_complete",
+        stage=log_prefix,
+        mode="parallel",
+        workers=workers,
+        start_method=mp_context.get_start_method(),
+        total_blocks=total_blocks,
+        total_chunks=len(block_ranges),
+        candidate_matches=len(matches),
+        elapsed_seconds=round(elapsed_seconds, 3),
+        blocks_per_second=round(total_blocks / elapsed_seconds, 3) if elapsed_seconds > 0 else None,
+    )
+    return matches
 
 
 def counter_overlap(left: Iterable[str], right: Iterable[str]) -> int:
@@ -1154,6 +1414,257 @@ def apply_row_acceptance_threshold(
         + adjusted["review_status"].ne("accepted").astype(float)
     )
     return adjusted
+
+
+def _speech_single_source_lookup(frame: pd.DataFrame) -> dict[int, dict[str, object]]:
+    accepted = frame[
+        frame["review_status"].eq("accepted") & frame["source_url"].notna()
+    ].copy()
+    lookup: dict[int, dict[str, object]] = {}
+    if accepted.empty:
+        return lookup
+    for speech_id, group in accepted.groupby("speech_id", sort=False):
+        source_count = int(group["source_url"].nunique())
+        if source_count != 1:
+            continue
+        first = group.iloc[0]
+        lookup[int(speech_id)] = {
+            "matched_president": first.get("matched_president"),
+            "matched_label": first.get("matched_label"),
+            "source_url": first.get("source_url"),
+            "source_title": first.get("source_title"),
+            "source_date": first.get("source_date"),
+            "source_name": first.get("source_name"),
+        }
+    return lookup
+
+
+def _update_resolved_row(
+    frame: pd.DataFrame,
+    *,
+    row_idx: int,
+    matched_president: str | None,
+    matched_label: str | None,
+    source_url: str | None,
+    source_title: str | None,
+    source_date: str | None,
+    source_name: str | None,
+    match_score: float,
+    score_margin: float,
+    evidence_snippet: str | None,
+    block_id: str | None,
+    resolution_method: str,
+) -> None:
+    frame.at[row_idx, "matched_president"] = matched_president
+    frame.at[row_idx, "matched_label"] = matched_label
+    frame.at[row_idx, "source_url"] = source_url
+    frame.at[row_idx, "source_title"] = source_title
+    frame.at[row_idx, "source_date"] = source_date
+    frame.at[row_idx, "source_name"] = source_name
+    frame.at[row_idx, "match_score"] = float(match_score)
+    frame.at[row_idx, "score_margin"] = float(score_margin)
+    frame.at[row_idx, "review_status"] = "accepted"
+    frame.at[row_idx, "evidence_snippet"] = evidence_snippet
+    frame.at[row_idx, "block_id"] = block_id
+    frame.at[row_idx, "triage_priority"] = max(0.0, 1.0 - float(match_score))
+    frame.at[row_idx, "resolution_method"] = resolution_method
+
+
+def _exact_sentence_doc_index(
+    docs: Sequence[ArchiveDoc],
+) -> dict[str, list[ArchiveDoc]]:
+    index: dict[str, list[ArchiveDoc]] = defaultdict(list)
+    for doc in docs:
+        for sentence in doc.normalized_sentences:
+            if sentence:
+                index[sentence].append(doc)
+    return index
+
+
+def recover_review_rows(
+    frame: pd.DataFrame,
+    *,
+    archive_docs: Sequence[ArchiveDoc],
+    matcher: ArchiveMatcher,
+    top_k: int = 5,
+    exact_sentence_min_full_tokens: int = 5,
+    single_source_sentence_min_score: float = 0.46,
+    single_source_sentence_workers: int = 1,
+    single_source_sentence_chunksize: int | None = None,
+    progress_every_blocks: int = 250,
+    log_prefix: str = "review_recovery",
+) -> pd.DataFrame:
+    adjusted = frame.copy()
+    if "resolution_method" not in adjusted.columns:
+        adjusted["resolution_method"] = adjusted["review_status"].map(
+            lambda status: "block_match" if status == "accepted" else None
+        )
+    adjusted = adjusted.set_index("row_idx", drop=False)
+
+    exact_index = _exact_sentence_doc_index(tuple(archive_docs))
+    exact_resolved = 0
+    speech_single_source = _speech_single_source_lookup(adjusted.reset_index(drop=True))
+    unresolved = adjusted[adjusted["review_status"].ne("accepted")]
+    for row in unresolved.itertuples(index=False):
+        if not isinstance(row.text, str) or not row.text.strip():
+            continue
+        normalized_text = normalize_text(row.text)
+        if len(full_tokens_from_normalized(normalized_text)) < exact_sentence_min_full_tokens:
+            continue
+        doc_hits = exact_index.get(normalized_text, [])
+        if not doc_hits:
+            continue
+        matched_labels = {PRESIDENT_NAME_TO_LABEL[doc.president] for doc in doc_hits}
+        if len(matched_labels) != 1:
+            continue
+        matched_label = next(iter(matched_labels))
+        matched_president = PRESIDENT_LABEL_TO_NAME[matched_label]
+        resolved_doc: ArchiveDoc | None = None
+        unique_doc_ids = {doc.doc_id for doc in doc_hits}
+        if len(unique_doc_ids) == 1:
+            resolved_doc = doc_hits[0]
+            resolution_method = "exact_sentence_unique_doc"
+        else:
+            speech_source = speech_single_source.get(int(row.speech_id))
+            if speech_source is not None:
+                target_url = speech_source.get("source_url")
+                for doc in doc_hits:
+                    if doc.source_url == target_url:
+                        resolved_doc = doc
+                        break
+            resolution_method = "exact_sentence_unique_label"
+        _update_resolved_row(
+            adjusted,
+            row_idx=int(row.row_idx),
+            matched_president=matched_president,
+            matched_label=matched_label,
+            source_url=None if resolved_doc is None else resolved_doc.source_url,
+            source_title=None if resolved_doc is None else resolved_doc.title,
+            source_date=None if resolved_doc is None else resolved_doc.date,
+            source_name=None if resolved_doc is None else resolved_doc.source_name,
+            match_score=1.0,
+            score_margin=1.0,
+            evidence_snippet=str(row.text),
+            block_id=f"exact_sentence:{int(row.speech_id)}:{int(row.sentence_id)}",
+            resolution_method=resolution_method,
+        )
+        exact_resolved += 1
+
+    def apply_same_doc_gap_fill(pass_name: str) -> int:
+        gap_fills = 0
+        snapshot = adjusted.reset_index(drop=True)
+        for _, group in snapshot.groupby("speech_id", sort=False):
+            ordered = group.sort_values("sentence_id", kind="stable").reset_index(drop=True)
+            accepted_positions = [
+                pos for pos, status in enumerate(ordered["review_status"].tolist()) if status == "accepted"
+            ]
+            if len(accepted_positions) < 2:
+                continue
+            for pos, row in ordered.iterrows():
+                if row["review_status"] == "accepted":
+                    continue
+                left_positions = [value for value in accepted_positions if value < pos]
+                right_positions = [value for value in accepted_positions if value > pos]
+                if not left_positions or not right_positions:
+                    continue
+                left = ordered.iloc[left_positions[-1]]
+                right = ordered.iloc[right_positions[0]]
+                if (
+                    pd.notna(left["source_url"])
+                    and pd.notna(right["source_url"])
+                    and left["source_url"] == right["source_url"]
+                    and left["matched_label"] == right["matched_label"]
+                ):
+                    _update_resolved_row(
+                        adjusted,
+                        row_idx=int(row["row_idx"]),
+                        matched_president=str(left["matched_president"]),
+                        matched_label=str(left["matched_label"]),
+                        source_url=str(left["source_url"]),
+                        source_title=str(left["source_title"]),
+                        source_date=str(left["source_date"]),
+                        source_name=str(left["source_name"]),
+                        match_score=float(min(left["match_score"], right["match_score"])),
+                        score_margin=float(min(left["score_margin"], right["score_margin"])),
+                        evidence_snippet=str(row["text"]),
+                        block_id=f"{pass_name}:{int(row['speech_id'])}:{int(row['sentence_id'])}",
+                        resolution_method="same_doc_gap_fill",
+                    )
+                    gap_fills += 1
+        return gap_fills
+
+    gap_fill_resolved = apply_same_doc_gap_fill("gap_fill_pass1")
+
+    speech_single_source = _speech_single_source_lookup(adjusted.reset_index(drop=True))
+    single_source_rows = adjusted[
+        adjusted["review_status"].ne("accepted")
+        & adjusted["speech_id"].isin(speech_single_source)
+        & adjusted["text"].map(lambda value: isinstance(value, str) and bool(value.strip()))
+    ][["row_idx", "speech_id", "sentence_id", "text"]].copy()
+    sentence_resolved = 0
+    if not single_source_rows.empty:
+        sentence_blocks = build_blocks(
+            single_source_rows,
+            dataset_name="review_sentence",
+            block_size=1,
+            block_step=1,
+        )
+        sentence_candidates = score_blocks(
+            matcher,
+            sentence_blocks,
+            top_k=top_k,
+            min_score=0.0,
+            min_margin=0.0,
+            min_sentence_hits=0,
+            workers=single_source_sentence_workers,
+            chunksize=single_source_sentence_chunksize,
+            progress_every_blocks=progress_every_blocks,
+            log_prefix=f"{log_prefix}_single_sentence",
+        )
+        sentence_matches = build_row_matches(
+            single_source_rows,
+            sentence_candidates,
+            row_conflict_margin=0.05,
+        ).set_index("row_idx", drop=False)
+        for row_idx, row in sentence_matches.iterrows():
+            if row["review_status"] != "accepted":
+                continue
+            speech_source = speech_single_source.get(int(row["speech_id"]))
+            if speech_source is None:
+                continue
+            if row["source_url"] != speech_source["source_url"]:
+                continue
+            if float(row["match_score"]) < single_source_sentence_min_score:
+                continue
+            _update_resolved_row(
+                adjusted,
+                row_idx=int(row_idx),
+                matched_president=None if pd.isna(row["matched_president"]) else str(row["matched_president"]),
+                matched_label=None if pd.isna(row["matched_label"]) else str(row["matched_label"]),
+                source_url=None if pd.isna(row["source_url"]) else str(row["source_url"]),
+                source_title=None if pd.isna(row["source_title"]) else str(row["source_title"]),
+                source_date=None if pd.isna(row["source_date"]) else str(row["source_date"]),
+                source_name=None if pd.isna(row["source_name"]) else str(row["source_name"]),
+                match_score=float(row["match_score"]),
+                score_margin=float(row["score_margin"]),
+                evidence_snippet=None if pd.isna(row["evidence_snippet"]) else str(row["evidence_snippet"]),
+                block_id=None if pd.isna(row["block_id"]) else str(row["block_id"]),
+                resolution_method="single_sentence_single_source",
+            )
+            sentence_resolved += 1
+
+    gap_fill_resolved += apply_same_doc_gap_fill("gap_fill_pass2")
+    _emit_progress_event(
+        "review_recovery_complete",
+        stage=log_prefix,
+        exact_sentence_resolved=int(exact_resolved),
+        same_doc_gap_resolved=int(gap_fill_resolved),
+        single_sentence_resolved=int(sentence_resolved),
+        accepted_rows=int(adjusted["review_status"].eq("accepted").sum()),
+        review_rows=int(adjusted["review_status"].ne("accepted").sum()),
+    )
+    adjusted = adjusted.reset_index(drop=True)
+    return adjusted.sort_values(["row_idx"], kind="stable").reset_index(drop=True)
 
 
 def submission_from_row_matches(frame: pd.DataFrame) -> pd.DataFrame:

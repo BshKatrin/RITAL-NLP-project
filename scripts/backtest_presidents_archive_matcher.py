@@ -17,7 +17,7 @@ from rital_nlp_project.presidents.archive_labeling import (
     compute_threshold_grid,
     load_archive_docs,
     load_labeled_rows,
-    score_block_candidates,
+    score_blocks,
 )
 
 
@@ -73,6 +73,24 @@ def parse_args() -> argparse.Namespace:
         default=0.01,
         help="Step size for the threshold sweep interval.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of worker processes used for block scoring. Use 1 to stay serial.",
+    )
+    parser.add_argument(
+        "--chunksize",
+        type=int,
+        default=None,
+        help="Number of query blocks assigned to each process task. Default picks an automatic size.",
+    )
+    parser.add_argument(
+        "--progress-every-blocks",
+        type=int,
+        default=250,
+        help="Emit a progress log event after this many blocks have completed. Use 0 to disable.",
+    )
     return parser.parse_args()
 
 
@@ -91,18 +109,18 @@ def main() -> None:
     )
     matcher = ArchiveMatcher(archive_docs)
 
-    candidate_matches = []
-    for block in blocks:
-        candidate_matches.extend(
-            score_block_candidates(
-                matcher,
-                block,
-                top_k=args.top_k,
-                min_score=args.block_min_score,
-                min_margin=args.block_min_margin,
-                min_sentence_hits=args.block_min_sentence_hits,
-            )
-        )
+    candidate_matches = score_blocks(
+        matcher,
+        blocks,
+        top_k=args.top_k,
+        min_score=args.block_min_score,
+        min_margin=args.block_min_margin,
+        min_sentence_hits=args.block_min_sentence_hits,
+        workers=args.workers,
+        chunksize=args.chunksize,
+        progress_every_blocks=args.progress_every_blocks,
+        log_prefix="backtest",
+    )
 
     candidate_matches_to_frame(candidate_matches).to_csv(
         output_dir / "speech_candidates.csv",
@@ -153,6 +171,9 @@ def main() -> None:
         "block_min_score": float(args.block_min_score),
         "block_min_margin": float(args.block_min_margin),
         "block_min_sentence_hits": int(args.block_min_sentence_hits),
+        "workers": int(args.workers),
+        "chunksize": None if args.chunksize is None else int(args.chunksize),
+        "progress_every_blocks": int(args.progress_every_blocks),
         "outputs": {
             "threshold_sweep_csv": str((output_dir / "threshold_sweep.csv").resolve()),
             "backtest_rows_csv": str((output_dir / "backtest_rows.csv").resolve()),
