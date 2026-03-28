@@ -75,6 +75,22 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Inference batch size. Defaults to the checkpoint batch size.",
     )
+    parser.add_argument(
+        "--decision-threshold",
+        type=float,
+        default=0.5,
+        help="Decision threshold applied to calibrated probabilities for the main label file.",
+    )
+    parser.add_argument(
+        "--extra-raw-threshold-offsets",
+        nargs="*",
+        type=float,
+        default=[],
+        help=(
+            "Optional offsets added to the tuned raw threshold from calibration to "
+            "export extra label-only submission variants."
+        ),
+    )
     parser.add_argument("--device", default=default_device())
     parser.add_argument(
         "--max-test-speeches",
@@ -155,16 +171,33 @@ def apply_score_delta(scores: np.ndarray, delta: float) -> np.ndarray:
     return expit(logit(clipped) - float(delta))
 
 
+def labels_from_scores(scores: np.ndarray, *, threshold: float) -> np.ndarray:
+    return np.where(scores >= threshold, "M", "C")
+
+
+def calibrated_threshold_from_raw_threshold(*, raw_threshold: float, delta: float) -> float:
+    clipped = np.clip(float(raw_threshold), 1e-9, 1.0 - 1e-9)
+    return float(expit(logit(clipped) - float(delta)))
+
+
+def threshold_tag(value: float) -> str:
+    return f"{value:.3f}".replace(".", "p")
+
+
 def predictions_to_frame(
     predictions: list[dict[str, np.ndarray | int]],
     *,
     delta: float,
+    decision_threshold: float,
 ) -> pd.DataFrame:
     frames = []
     for item in predictions:
         raw_scores = np.asarray(item["prob_mitterrand_raw"], dtype=np.float64)  # type: ignore[index]
         calibrated_scores = apply_score_delta(raw_scores, delta)
-        labels = np.where(calibrated_scores >= 0.5, "M", "C")
+        labels = labels_from_scores(
+            calibrated_scores,
+            threshold=float(decision_threshold),
+        )
         frames.append(
             pd.DataFrame(
                 {
@@ -191,6 +224,12 @@ def main() -> None:
     calibration = json.loads(Path(args.calibration_path).read_text())
     batch_size = args.batch_size or checkpoint["config"].get("batch_size", 8)
     delta = float(calibration["equivalent_score_delta"])
+    tuned_raw_threshold = float(
+        calibration.get(
+            "threshold",
+            calibration.get("best_threshold", expit(delta)),
+        )
+    )
     device = torch.device(args.device)
 
     test_embeddings, test_metadata = load_embeddings_with_metadata(
@@ -215,7 +254,11 @@ def main() -> None:
     predictions = collect_predictions(model, test_loader, device=device)
     inference_seconds = time.perf_counter() - inference_start
 
-    frame = predictions_to_frame(predictions, delta=delta)
+    frame = predictions_to_frame(
+        predictions,
+        delta=delta,
+        decision_threshold=args.decision_threshold,
+    )
 
     aligned_metadata = selected_metadata[["speech_id", "sentence_id"]].copy()
     if not frame[["speech_id", "sentence_id"]].reset_index(drop=True).equals(
@@ -227,7 +270,6 @@ def main() -> None:
         frame["text"] = selected_metadata["text"].to_numpy()
 
     detailed_path = output_dir / "test_predictions_detailed.csv"
-    frame.to_csv(detailed_path, index=False)
 
     raw_prob_path = output_dir / "submission_prob_mitterrand_raw.csv"
     frame[["prob_mitterrand_raw"]].to_csv(raw_prob_path, index=False, header=False)
@@ -246,6 +288,49 @@ def main() -> None:
         header=False,
     )
 
+    variant_outputs = {}
+    for offset in args.extra_raw_threshold_offsets:
+        raw_threshold = tuned_raw_threshold + float(offset)
+        if not 0.0 < raw_threshold < 1.0:
+            raise ValueError(
+                "extra raw threshold offsets must keep the raw threshold strictly "
+                f"between 0 and 1, got {raw_threshold:.6f}"
+            )
+
+        calibrated_threshold = calibrated_threshold_from_raw_threshold(
+            raw_threshold=raw_threshold,
+            delta=delta,
+        )
+        column_name = f"pred_label_calibrated_raw_threshold_{threshold_tag(raw_threshold)}"
+        frame[column_name] = labels_from_scores(
+            frame["prob_mitterrand_calibrated"].to_numpy(dtype=np.float64),
+            threshold=calibrated_threshold,
+        )
+
+        variant_path = (
+            output_dir
+            / f"submission_label_calibrated_raw_threshold_{threshold_tag(raw_threshold)}.csv"
+        )
+        frame[[column_name]].to_csv(
+            variant_path,
+            index=False,
+            header=False,
+        )
+        variant_outputs[f"{raw_threshold:.6f}"] = {
+            "raw_threshold": float(raw_threshold),
+            "calibrated_threshold": float(calibrated_threshold),
+            "path": str(variant_path.resolve()),
+            "label_counts": {
+                label: int(count)
+                for label, count in (
+                    frame[column_name].value_counts().sort_index().items()
+                )
+            },
+        }
+
+    # Rewrite the detailed file after optional variant columns are attached.
+    frame.to_csv(detailed_path, index=False)
+
     summary = {
         "checkpoint_path": str(Path(args.checkpoint_path).resolve()),
         "calibration_path": str(Path(args.calibration_path).resolve()),
@@ -254,8 +339,9 @@ def main() -> None:
         "test_speeches": int(frame["speech_id"].nunique()),
         "batch_size": int(batch_size),
         "selected_score_name": calibration["selected_score_name"],
+        "raw_threshold": tuned_raw_threshold,
         "equivalent_score_delta": delta,
-        "decision_threshold": 0.5,
+        "decision_threshold": float(args.decision_threshold),
         "timing": {
             "started_at": started_at,
             "ended_at": datetime.now().astimezone().isoformat(),
@@ -268,6 +354,7 @@ def main() -> None:
             "submission_prob_mitterrand_calibrated": str(calibrated_prob_path.resolve()),
             "submission_label_calibrated": str(calibrated_label_path.resolve()),
         },
+        "variant_outputs": variant_outputs,
         "label_counts": {
             label: int(count)
             for label, count in (
