@@ -15,7 +15,8 @@ from rital_nlp_project.presidents.archive_labeling import (
     load_archive_docs,
     load_model_triage,
     parse_hidden_test_corpus,
-    score_block_candidates,
+    recover_review_rows,
+    score_blocks,
     submission_from_row_matches,
 )
 
@@ -88,6 +89,42 @@ def parse_args() -> argparse.Namespace:
         default=0.05,
         help="Rows with competing accepted blocks within this score gap are marked for review.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of worker processes used for block scoring. Use 1 to stay serial.",
+    )
+    parser.add_argument(
+        "--chunksize",
+        type=int,
+        default=None,
+        help="Number of query blocks assigned to each process task. Default picks an automatic size.",
+    )
+    parser.add_argument(
+        "--progress-every-blocks",
+        type=int,
+        default=250,
+        help="Emit a progress log event after this many blocks have completed. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--exact-sentence-min-full-tokens",
+        type=int,
+        default=5,
+        help=(
+            "Minimum number of normalized tokens required before exact-sentence fallback "
+            "can auto-accept a review row."
+        ),
+    )
+    parser.add_argument(
+        "--single-source-sentence-min-score",
+        type=float,
+        default=0.46,
+        help=(
+            "Minimum sentence-level score for the second-pass recovery used only inside "
+            "speeches that already have exactly one accepted source document."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -119,18 +156,18 @@ def main() -> None:
     )
     matcher = ArchiveMatcher(archive_docs)
 
-    candidate_matches = []
-    for block in blocks:
-        candidate_matches.extend(
-            score_block_candidates(
-                matcher,
-                block,
-                top_k=args.top_k,
-                min_score=args.block_min_score,
-                min_margin=args.block_min_margin,
-                min_sentence_hits=args.block_min_sentence_hits,
-            )
-        )
+    candidate_matches = score_blocks(
+        matcher,
+        blocks,
+        top_k=args.top_k,
+        min_score=args.block_min_score,
+        min_margin=args.block_min_margin,
+        min_sentence_hits=args.block_min_sentence_hits,
+        workers=args.workers,
+        chunksize=args.chunksize,
+        progress_every_blocks=args.progress_every_blocks,
+        log_prefix="hidden_test_match",
+    )
 
     speech_candidates = candidate_matches_to_frame(candidate_matches)
     speech_candidates.to_csv(output_dir / "speech_candidates.csv", index=False)
@@ -144,6 +181,18 @@ def main() -> None:
     row_matches = apply_row_acceptance_threshold(
         row_matches,
         min_score=row_min_score,
+    )
+    row_matches = recover_review_rows(
+        row_matches,
+        archive_docs=archive_docs,
+        matcher=matcher,
+        top_k=args.top_k,
+        exact_sentence_min_full_tokens=args.exact_sentence_min_full_tokens,
+        single_source_sentence_min_score=args.single_source_sentence_min_score,
+        single_source_sentence_workers=args.workers,
+        single_source_sentence_chunksize=args.chunksize,
+        progress_every_blocks=args.progress_every_blocks,
+        log_prefix="hidden_test_review_recovery",
     )
     row_matches.to_csv(output_dir / "row_labels_with_evidence.csv", index=False)
 
@@ -163,6 +212,15 @@ def main() -> None:
         "review_rows": int(row_matches["review_status"].ne("accepted").sum()),
         "model_disagreement_rows": int(row_matches["model_disagreement"].sum()),
         "row_min_score": float(row_min_score),
+        "workers": int(args.workers),
+        "chunksize": None if args.chunksize is None else int(args.chunksize),
+        "progress_every_blocks": int(args.progress_every_blocks),
+        "exact_sentence_min_full_tokens": int(args.exact_sentence_min_full_tokens),
+        "single_source_sentence_min_score": float(args.single_source_sentence_min_score),
+        "resolution_method_counts": {
+            str(method): int(count)
+            for method, count in row_matches["resolution_method"].fillna("unresolved").value_counts().items()
+        },
         "outputs": {
             "speech_candidates_csv": str((output_dir / "speech_candidates.csv").resolve()),
             "row_labels_with_evidence_csv": str((output_dir / "row_labels_with_evidence.csv").resolve()),
