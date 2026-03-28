@@ -6,25 +6,6 @@ from sklearn.metrics import classification_report, get_scorer
 from sklearn.model_selection import cross_validate
 from sklearn.pipeline import Pipeline
 
-
-def eval_combination_matrix(X, y, vectorizer_list, classifier_list, scoring):
-    results = []
-    for vect in vectorizer_list:
-        for clf in classifier_list:
-            pipe = Pipeline([("vectorizer", vect), ("classifier", clf)])
-            scores = cross_validate(pipe, X, y, scoring=scoring)
-            # Print all available scores in the scoring dict
-            # for score_name in scoring:
-            #     print(
-            #         f"Cross-validation {score_name} scores: {scores['test_' + score_name]}, mean: {np.mean(scores['test_' + score_name]):.4f}")
-            results.append({
-                "vectorizer": vect,
-                "classifier": clf,
-                **{score_name: np.mean(scores['test_' + score_name]) for score_name in scoring}
-            })
-    return pd.DataFrame(results)
-
-
 def eval_pipeline(
     pipeline,  # pipeline or model
     X,
@@ -49,18 +30,8 @@ def eval_pipeline(
         split_out = split_fn(X, y)
         X_train, X_test, y_train, y_test = split_out
 
-        # Training time
-        t0 = time.time()
         pipeline.fit(X_train, y_train)
-        train_time = time.time() - t0
-        results["train_train_time"] = train_time
-
-        # Inference time
-        t0 = time.time()
         predictions = pipeline.predict(X_test)
-        infer_time = time.time() - t0
-
-        results["test_infer_time"] = infer_time
 
         for score_name in scoring:
             scorer = get_scorer(scoring[score_name])
