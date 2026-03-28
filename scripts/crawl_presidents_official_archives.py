@@ -280,6 +280,15 @@ def main() -> None:
     submitted: dict[object, tuple[str, str]] = {}
     total_to_fetch = len(elysee_urls) + len(vie_publique_urls)
 
+    def persist_outputs() -> pd.DataFrame:
+        docs.sort(key=lambda doc: (doc.president, doc.date, doc.doc_id))
+        frame = pd.DataFrame([archive_doc_to_record(doc) for doc in docs])
+        frame = frame.drop_duplicates(subset=["source_url"], keep="first").reset_index(drop=True)
+        frame.to_parquet(parquet_path, index=False)
+        frame.to_csv(csv_path, index=False)
+        pd.DataFrame(failures).to_csv(failures_path, index=False)
+        return frame
+
     print(
         json.dumps(
             {
@@ -332,12 +341,14 @@ def main() -> None:
                     }
                 )
             if completed_count % 25 == 0 or completed_count == total_to_fetch:
+                frame = persist_outputs()
                 print(
                     json.dumps(
                         {
                             "event": "crawl_progress",
                             "completed": completed_count,
                             "total_to_fetch": total_to_fetch,
+                            "docs_written_so_far": int(len(frame)),
                             "succeeded_this_run": len(docs) - len(existing_docs),
                             "failed_this_run": len(failures),
                         }
@@ -348,13 +359,7 @@ def main() -> None:
     if not docs:
         raise ArchiveLabelingError("Crawler did not produce any archive document")
 
-    docs.sort(key=lambda doc: (doc.president, doc.date, doc.doc_id))
-    frame = pd.DataFrame([archive_doc_to_record(doc) for doc in docs])
-    frame = frame.drop_duplicates(subset=["source_url"], keep="first").reset_index(drop=True)
-
-    frame.to_parquet(parquet_path, index=False)
-    frame.to_csv(csv_path, index=False)
-    pd.DataFrame(failures).to_csv(failures_path, index=False)
+    frame = persist_outputs()
 
     summary = {
         "elysee_urls_requested": len(elysee_urls),
