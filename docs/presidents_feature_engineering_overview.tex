@@ -1,0 +1,114 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,landscape,margin=1.4cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+
+\pagestyle{empty}
+
+\definecolor{accent}{HTML}{1F5F8B}
+\definecolor{accentsoft}{HTML}{EAF3F8}
+\definecolor{stripe}{HTML}{F7FAFC}
+\definecolor{deepgreen}{HTML}{1E7A46}
+\definecolor{amber}{HTML}{A86A00}
+\definecolor{slate}{HTML}{4B5563}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+
+\begin{center}
+    {\LARGE\bfseries Presidents Pipeline: Feature Engineering Overview}\\[0.4em]
+    {\large Current repository implementation}
+\end{center}
+
+\vspace{0.8em}
+
+\noindent
+\colorbox{accentsoft}{%
+    \parbox{\dimexpr\textwidth-2\fboxsep\relax}{%
+        \textbf{Reading guide.}
+        The current repository always starts from one precomputed transformer sentence embedding per sentence.
+        It then keeps speech order through metadata and can optionally append deterministic position features
+        and local transition features before the BiLSTM.
+    }%
+}
+
+\vspace{1em}
+
+\small
+\renewcommand{\arraystretch}{1.35}
+\rowcolors{2}{stripe}{white}
+
+\begin{tabularx}{0.98\textwidth}{
+    >{\raggedright\arraybackslash}p{3.3cm}
+    >{\raggedright\arraybackslash}p{6.0cm}
+    >{\centering\arraybackslash}p{1.7cm}
+    Y
+    >{\raggedright\arraybackslash}p{3.4cm}
+}
+\rowcolor{accent!18}
+\textbf{Feature block} &
+\textbf{Concrete variables} &
+\textbf{Added dim.} &
+\textbf{Why it helps} &
+\textbf{Status in repo} \\
+
+Base sentence representation &
+One dense sentence embedding $e_t \in \mathbb{R}^{768}$ for each sentence, loaded from the precomputed embedding matrix. &
+$768$ &
+Captures the lexical and semantic content of the sentence before any speech-level modeling. This is the core signal seen by every presidents model in the repo. &
+\textcolor{deepgreen}{\textbf{Core}}\\
+
+Speech structure metadata &
+\texttt{speech\_id} and \texttt{sentence\_id}, used to rebuild full speeches and preserve sentence order. &
+-- &
+This is not concatenated to the vector, but it is essential: it lets the code batch whole speeches, keep chronological order, and run a sequence model instead of independent sentence classification. &
+\textcolor{slate}{\textbf{Structural}}\\
+
+Position features &
+$p_t,\; 1-p_t,\; p_t^2,\; (1-p_t)^2,\; 2p_t-1,\; 1/L$ where $p_t$ is the normalized sentence position and $L$ is speech length. &
+$+6$ &
+Injects simple but useful priors: beginning vs.\ end of speech, centered location, non-linear position effects, and an explicit cue about overall speech length. &
+\textcolor{amber}{\textbf{Optional}} in the full sequence pipeline\\
+
+Transition features &
+$\cos(e_t, e_{t-1})$, $\cos(e_t, e_{t+1})$, $\lVert e_t-e_{t-1}\rVert_2$, $\lVert e_{t+1}-e_t\rVert_2$ &
+$+4$ &
+Acts as a local change detector. Sharp embedding changes can reveal sentence boundaries where the topic, rhetoric, or speaker behavior shifts. Smooth neighborhoods look different from abrupt transitions. &
+\textcolor{amber}{\textbf{Optional}} in the full sequence pipeline\\
+
+Feature concatenation rule &
+The final input is formed by concatenating the base embedding with any enabled optional blocks. &
+varies &
+Keeps the engineering simple and explainable: every extra block is deterministic, compact, and interpretable, so the BiLSTM still receives one feature vector per sentence. &
+\textcolor{deepgreen}{\textbf{Current design}}\\
+\end{tabularx}
+
+\vspace{1em}
+
+\noindent
+\fcolorbox{accent!45}{accentsoft}{%
+    \parbox{\dimexpr\textwidth-2\fboxsep-2\fboxrule\relax}{%
+        \textbf{Final input dimension summary.}
+        Base only: $768$
+        \hfill
+        Base + position: $774$
+        \hfill
+        Base + transition: $772$
+        \hfill
+        Base + both: $778$
+    }%
+}
+
+\vspace{0.7em}
+
+\normalsize
+\noindent\textbf{Implementation note.}
+The simplified training pipeline in the repo deliberately disables position and transition features to stay easier to explain,
+while the fuller sequence pipeline can enable them as optional feature blocks.
+
+\end{document}
