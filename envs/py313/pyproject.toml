@@ -13,7 +13,10 @@ dependencies = [
     "pyldavis>=3.4.1",
     "umap-learn>=0.5.11",
     "matplotlib>=3.10.8",
-    "seaborn>=0.13.2"
+    "seaborn>=0.13.2",
+    "spacy>=3.8.13",
+    "pip>=26.0.1",
+    "nltk>=3.9.4",
 ]
 
 [build-system]
