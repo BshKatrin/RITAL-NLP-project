@@ -62,6 +62,7 @@ def add_extra_features(X):
 
     return extra
 
+
 def expand_train_test(X_train, X_test, y_train, y_test=None, n=1, add_extra=True):
     X_train_concat = concat_neighbours(X_train, n)
     X_test_concat = concat_neighbours(X_test, n)
@@ -171,3 +172,9 @@ def expand_train_test(X_train, X_test, y_train, y_test=None, n=1, add_extra=True
         return X_train_concat, X_test_concat, y_train_concat, y_test_concat
 
     return X_train_concat, X_test_concat, y_train_concat
+
+
+def get_seq_len(classes):
+    unique_class = classes[np.r_[0, np.where(np.diff(classes) != 0)[0] + 1]]
+    lengths = np.diff(np.r_[0, np.where(np.diff(classes) != 0)[0] + 1, len(classes)])
+    return unique_class, lengths
