@@ -19,7 +19,8 @@ scoring = {
     'f1': 'f1',
     'recall': 'recall',
     'precision': 'precision',
-    'roc_auc': 'roc_auc'
+    'roc_auc': 'roc_auc',
+    'pr_auc': 'average_precision'
 }
 
 COUNT_LIKE_VECTORIZERS = [
@@ -59,9 +60,11 @@ COMPATIBILITY = {
 CLASSIFIERS = {
     "nb": MultinomialNB(),
     "logreg": LogisticRegression(),
-    "svm": LinearSVC(),
-    "smooth_logreg": SmoothedProbaClassifier(LogisticRegression(), sigma=1),
-    "smooth_nb": SmoothedProbaClassifier(MultinomialNB(), sigma=1),
+    # "logreg_balanced": LogisticRegression(class_weight="balanced"),
+    # "svm": LinearSVC(),
+    # "svm_balanced"
+    # "smooth_logreg": SmoothedProbaClassifier(LogisticRegression(), sigma=1),
+    # "smooth_nb": SmoothedProbaClassifier(MultinomialNB(), sigma=1),
 }
 
 

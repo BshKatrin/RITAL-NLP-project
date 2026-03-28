@@ -41,18 +41,19 @@ def load_movies(path2data):  # 1 classe par répertoire
 
     return alltxts, labs
 
+
 def load_txt(path):
     with open(path, "r", encoding="utf-8") as f:
         texts = [line.strip() for line in f if line.strip()]
     return texts, None
 
-def clean_dataset(load_func: Callable, data_path: str, out_path: str, preprocessor, test:bool=False):
-    
+
+def clean_dataset(load_func: Callable, data_path: str, out_path: str, preprocessor, test: bool = False):
+
     texts, classes = load_func(data_path)
-    print("loaded")
     text_preprocessor = preprocessor.fit(texts)
     texts_cleaned = text_preprocessor.transform(texts)
-    
+
     df = pd.DataFrame({"text": texts_cleaned})
     if not test:
         df["label"] = classes

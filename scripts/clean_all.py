@@ -55,7 +55,7 @@ def clean_movies(args):
         stopwords=STOPWORDS["english"],
         pipeline_mode=args.pipeline_mode,
     )
-    load_fn = load_txt if args.test else load_movies 
+    load_fn = load_txt if args.test else load_movies
     t0 = time.time()
     clean_dataset(load_fn, args.input_path, args.output_path, preprocessor, args.test)
     t0 = time.time() - t0
@@ -73,7 +73,7 @@ def clean_presidents(args):
     )
 
     t0 = time.time()
-    clean_dataset(load_pres, args.input_path, args.output_path, preprocessor)
+    clean_dataset(load_pres, args.input_path, args.output_path, preprocessor, test=False, )
     t0 = time.time() - t0
     print(f"Finished cleaning presidents. Took {t0} seconds.")
 
