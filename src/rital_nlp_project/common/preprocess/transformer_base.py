@@ -3,7 +3,7 @@ import re
 from typing import Sequence
 
 from sklearn.base import BaseEstimator, TransformerMixin
-from unidecode import unidecode
+import unicodedata
 import nltk
 from nltk.stem.snowball import SnowballStemmer
 
@@ -163,10 +163,10 @@ class TextPreprocessorBase(ABC, BaseEstimator, TransformerMixin):
     def remove_punctuation(self, text: str, punctuation: str) -> str:
         return text.lower().translate(str.maketrans(punctuation, ' ' * len(punctuation)))
 
-    def remove_stopwords(self, text: str, stopwords, apply_unidecode: bool = False) -> str:
-        def normalize(word):
-            return unidecode(word) if apply_unidecode else word
-        return " ".join([word for word in text.split() if normalize(word) not in stopwords])
+    def remove_stopwords(self, text: str, stopwords) -> str:
+        # def normalize(word):
+        #     return unidecode(word) if apply_unidecode else word
+        return " ".join([word for word in text.split() if word not in stopwords])
 
     def normalize(self, text: str) -> str:
-        return unidecode(text)
+        return unicodedata.normalize("NFC", text)
