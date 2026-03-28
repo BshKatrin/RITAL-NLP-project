@@ -1,10 +1,10 @@
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import LinearSVC
+from sklearn.metrics import make_scorer, precision_score, recall_score, f1_score
 
 from rital_nlp_project.common.models.utils import make_lsa_vectorizer, get_word_embed_vectorizers
-from rital_nlp_project.presidents.models import SmoothedProbaClassifier
+# from rital_nlp_project.presidents.models import SmoothedProbaClassifier
 
 max_df = 0.5
 min_df = 5
@@ -16,9 +16,9 @@ fasttext_model = "cc.fr.300.bin"
 
 scoring = {
     'accuracy': 'accuracy',
-    'f1': 'f1',
-    'recall': 'recall',
-    'precision': 'precision',
+    'f1': make_scorer(f1_score, zero_division=0),
+    'recall': make_scorer(recall_score, zero_division=0),
+    'precision': make_scorer(precision_score, zero_division=0),
     'roc_auc': 'roc_auc',
     'pr_auc': 'average_precision'
 }
@@ -49,22 +49,18 @@ TFIDF_LSA_VECTORIZERS = [
 ]
 
 COMPATIBILITY = {
-    "count": ["nb", "logreg", "svm", "smooth_nb"],
-    "count_lsa": ["logreg", "smooth_logreg", "svm"],
-    "tfidf": ["logreg", "smooth_logreg", "svm"],
-    "tfidf_lsa": ["logreg", "smooth_logreg", "svm"],
-    "fasttext": ["logreg", "smooth_logreg", "svm"],
-    "cls": ["logreg", "smooth_logreg", "svm"]  # refers to CLS embedding
+    "count": ["nb", "logreg_2_to_1", "logreg_balanced"],
+    "count_lsa": ["logreg_2_to_1", "logreg_balanced"],
+    "tfidf": ["logreg_2_to_1", "logreg_balanced"],
+    "tfidf_lsa": ["logreg_2_to_1", "logreg_balanced"],
+    "fasttext": ["logreg_2_to_1", "logreg_balanced"],
+    "cls": ["logreg_2_to_1", "logreg_balanced"]  # refers to CLS embedding
 }
 
 CLASSIFIERS = {
     "nb": MultinomialNB(),
-    "logreg": LogisticRegression(),
-    # "logreg_balanced": LogisticRegression(class_weight="balanced"),
-    # "svm": LinearSVC(),
-    # "svm_balanced"
-    # "smooth_logreg": SmoothedProbaClassifier(LogisticRegression(), sigma=1),
-    # "smooth_nb": SmoothedProbaClassifier(MultinomialNB(), sigma=1),
+    "logreg_2_to_1": LogisticRegression(max_iter=5000, class_weight={1: 2, 0: 1}),
+    "logreg_balanced": LogisticRegression(max_iter=5000, class_weight="balanced"),
 }
 
 

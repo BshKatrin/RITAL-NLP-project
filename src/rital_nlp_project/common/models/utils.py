@@ -12,16 +12,16 @@ def get_word_embed_vectorizers(model):
         return []
 
     return [
-        ("w2v_mean", WordEmbeddingsPoolingTransformer(model, pooling="mean")),
-        ("w2v_max", WordEmbeddingsPoolingTransformer(model, pooling="max")),
-        ("w2v_mean_max", WordEmbeddingsPoolingTransformer(model, pooling="mean_max")),
-        ("w2v_tfidf",
+        ("mean", WordEmbeddingsPoolingTransformer(model, pooling="mean")),
+        ("max", WordEmbeddingsPoolingTransformer(model, pooling="max")),
+        ("mean_max", WordEmbeddingsPoolingTransformer(model, pooling="mean_max")),
+        ("tfidf",
          WordEmbeddingsPoolingTransformer(
              model,
              pooling="tfidf",
              vectorizer=TfidfVectorizer()
          )),
-        ("w2v_sif",
+        ("sif",
          WordEmbeddingsPoolingTransformer(
              model,
              pooling="sif",
