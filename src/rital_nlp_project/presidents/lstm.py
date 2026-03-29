@@ -1,7 +1,59 @@
-
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+
+class BiLSTMSequenceTagger(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        projection_dim=None,
+        num_layers=1,
+        dropout=0.2,
+        num_labels=2,
+    ):
+        super().__init__()
+        projection_dim = input_dim if projection_dim is None else projection_dim
+
+        self.input_projection = (
+            nn.Identity()
+            if projection_dim == input_dim
+            else nn.Linear(input_dim, projection_dim)
+        )
+        self.input_dropout = nn.Dropout(dropout)
+        self.lstm = nn.LSTM(
+            projection_dim,
+            hidden_dim,
+            batch_first=True,
+            bidirectional=True,
+            num_layers=num_layers,
+            dropout=dropout if num_layers > 1 else 0.0,
+        )
+        self.classifier = nn.Linear(hidden_dim * 2, num_labels)
+
+    def forward(self, inputs, lengths):
+        if inputs.dim() != 3:
+            raise ValueError(f"Expected [batch, time, dim], got {tuple(inputs.shape)}")
+        if lengths.dim() != 1:
+            raise ValueError(f"Expected 1D lengths, got {tuple(lengths.shape)}")
+
+        projected = self.input_projection(inputs)
+        projected = self.input_dropout(projected)
+        packed = pack_padded_sequence(
+            projected,
+            lengths.cpu(),
+            batch_first=True,
+            enforce_sorted=False,
+        )
+        packed_outputs, _ = self.lstm(packed)
+        outputs, _ = pad_packed_sequence(
+            packed_outputs,
+            batch_first=True,
+            total_length=inputs.size(1),
+        )
+        return self.classifier(outputs)
 
 
 class BiLSTMClassifier(nn.Module):
