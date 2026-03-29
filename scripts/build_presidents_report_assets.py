@@ -484,7 +484,7 @@ def locate_structured_best_run():
     }
 
 
-def build_report_safe_curve_sources(simple_sweep_frame, camembert_train_dir):
+def build_report_safe_curve_sources(simple_sweep_frame, camembert_train_dir, include_clean_rerun=False):
     best_run_dir = Path(load_json(SIMPLE_SWEEP_SUMMARY)["best_ranked_run"]["output_dir"])
     best_simple_oof = pd.read_csv(best_run_dir / "oof_predictions.csv")
     best_simple_threshold = float(load_json(best_run_dir / "calibration.json")["threshold"])
@@ -517,18 +517,12 @@ def build_report_safe_curve_sources(simple_sweep_frame, camembert_train_dir):
         fusion_alpha,
     )
 
-    return [
+    sources = [
         make_curve_source(
             REPORT_SAFE_SIMPLE_NAME,
             best_simple_oof["true_label"],
             best_simple_oof["prob_mitterrand_raw"],
             best_simple_threshold,
-        ),
-        make_curve_source(
-            REPORT_SAFE_CLEAN_NAME,
-            clean_main_oof["true_label"],
-            clean_main_oof["prob_mitterrand_raw"],
-            clean_main_threshold,
         ),
         make_curve_source(
             REPORT_SAFE_CAMEMBERT_NAME,
@@ -543,6 +537,17 @@ def build_report_safe_curve_sources(simple_sweep_frame, camembert_train_dir):
             fusion_threshold,
         ),
     ]
+    if include_clean_rerun:
+        sources.insert(
+            1,
+            make_curve_source(
+                REPORT_SAFE_CLEAN_NAME,
+                clean_main_oof["true_label"],
+                clean_main_oof["prob_mitterrand_raw"],
+                clean_main_threshold,
+            ),
+        )
+    return sources
 
 
 def build_structured_curve_sources(simple_sweep_frame):
