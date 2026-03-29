@@ -7,27 +7,30 @@ from sklearn.preprocessing import Normalizer
 from rital_nlp_project.common.models.word_embeds import WordEmbeddingsPoolingTransformer
 
 
-def get_word_embed_vectorizers(model):
+def get_word_embed_vectorizers(model, advanced_pool=False):
     if model is None:
         return []
 
-    return [
+    pools = [
         ("mean", WordEmbeddingsPoolingTransformer(model, pooling="mean")),
         ("max", WordEmbeddingsPoolingTransformer(model, pooling="max")),
-        ("mean_max", WordEmbeddingsPoolingTransformer(model, pooling="mean_max")),
-        ("tfidf",
-         WordEmbeddingsPoolingTransformer(
-             model,
-             pooling="tfidf",
-             vectorizer=TfidfVectorizer()
-         )),
-        ("sif",
-         WordEmbeddingsPoolingTransformer(
-             model,
-             pooling="sif",
-             vectorizer=CountVectorizer()
-         )),
+        ("mean_max", WordEmbeddingsPoolingTransformer(model, pooling="mean_max"))
     ]
+
+    if advanced_pool:
+        pools.append(("tfidf",
+                      WordEmbeddingsPoolingTransformer(
+                          model,
+                          pooling="tfidf",
+                          vectorizer=TfidfVectorizer()
+                      )))
+        pools.append(("sif",
+                      WordEmbeddingsPoolingTransformer(
+                          model,
+                          pooling="sif",
+                          vectorizer=CountVectorizer()
+                      )))
+    return pools
 
 
 def make_lsa_vectorizer(base_vectorizer, n_components=1000):

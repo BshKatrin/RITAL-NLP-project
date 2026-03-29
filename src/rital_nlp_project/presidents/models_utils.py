@@ -115,8 +115,7 @@ def get_scores_smooth_duration(log_probs, D_max: list, kde: list):
 
     T, Y = log_probs.shape
 
-    D = [np.arange(1, d+1) for d in D_max]
-    # kde = [kde_0, kde_1]
+    D = [np.arange(3, d+1) for d in D_max]
 
     S = np.zeros((T, Y))
     for t in range(T):
@@ -141,7 +140,6 @@ def get_scores_smooth_duration(log_probs, D_max: list, kde: list):
 
 def smooth_prob_duration(probs, alpha, S):
     """Apply (weighted) smoothing to probabilities"""
-    # alpha = 0.5
     S_final = alpha * probs + (1-alpha) * S
 
     # Trick to avoid overflow

@@ -70,6 +70,6 @@ def get_vectorizers_by_type(models):
         "count_lsa": COUNT_LIKE_LSA_VECTORIZERS,
         "tfidf": TFIDF_VECTORIZERS,
         "tfidf_lsa": TFIDF_LSA_VECTORIZERS,
-        "fasttext": get_word_embed_vectorizers(models.get("fasttext", None))
+        "fasttext": get_word_embed_vectorizers(models.get("fasttext", None), advanced_pool=False)
     }
     return vectorizers_by_type
