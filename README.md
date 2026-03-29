@@ -25,7 +25,8 @@ Useful method notes:
 
 ## Quick Start
 
-If you want the fastest way to check that the repository works:
+If you want the fastest way to check that the repository works in a local copy
+that already contains the presidents data artifacts:
 
 ```bash
 uv sync --project envs/py314
@@ -131,11 +132,89 @@ The main presidents pipeline expects the following inputs:
 - `Dataset/embeddings/presidents_camembert_base_mean.npy`
 - `Dataset/embeddings/presidents_test_camembert_base_mean.npy`
 
-In the current repository snapshot, these files are already present. That means
-you can rerun the official presidents pipelines without regenerating the cleaned
-data or embeddings first.
+In our local working copy, these files are present. However, a **plain git
+clone will not include `Dataset/`**, because the repository currently ignores
+that directory.
+
+That means there are two different situations:
+
+- if a supervisor receives a full project folder from us, the data artifacts may
+  already be present and the main presidents scripts can run immediately
+- if a supervisor performs a clean git clone, they will need the raw presidents
+  corpora to be placed under `Dataset/raw/` and must rebuild the metadata and
+  embeddings first
 
 Generated outputs are written under `Dataset/out/`.
+
+## Rebuilding Presidents Data Artifacts
+
+If `Dataset/clean/` and `Dataset/embeddings/` are missing, rebuild them from
+the raw presidents corpora with:
+
+```bash
+uv run --project envs/py314 python spark/build_president_sequence_artifacts.py
+```
+
+Expected raw inputs:
+
+- `Dataset/raw/presidents/presidents.learn.utf8.txt`
+- `Dataset/raw/test/presidents/corpus.tache1.test.utf8`
+
+This script regenerates:
+
+- `Dataset/clean/presidents_clean_bert.parquet`
+- `Dataset/clean/presidents_test_clean_bert.parquet`
+- `Dataset/embeddings/presidents_camembert_base_mean.npy`
+- `Dataset/embeddings/presidents_test_camembert_base_mean.npy`
+
+and writes a build summary to:
+
+- `Dataset/out/presidents_artifacts_build_summary.json`
+
+So the official presidents models **are** reproducible from raw data with the
+tracked code in this repository, but the raw corpus files must still be made
+available alongside the clone.
+
+## Two Embedding Paths In This Repository
+
+There are two different embedding workflows in the codebase, and they do **not**
+serve the same purpose.
+
+### Official presidents embedding path
+
+The official presidents BiLSTM path uses:
+
+- [build_president_sequence_artifacts.py](/home/paulbeglin/projects/RITAL-NLP-project/spark/build_president_sequence_artifacts.py)
+
+This script:
+
+- parses the raw presidents corpora line by line
+- rebuilds the structured metadata with `speech_id`, `sentence_id`, `text`,
+  `text_raw`, and `label` when available
+- computes one **CamemBERT-base mean-pooled sentence embedding** per sentence
+- saves the exact `.parquet` and `.npy` files expected by the clean BiLSTM
+  pipeline
+
+This is the path to use when reproducing the main presidents results.
+
+### Older generic embedding utility
+
+The repository also contains:
+
+- [embed.py](/home/paulbeglin/projects/RITAL-NLP-project/spark/embed.py)
+
+This is an older, more generic utility script. It differs from the official
+presidents builder in several ways:
+
+- it is not presidents-specific
+- it works from an already cleaned parquet input such as `movies_test.parquet`
+- it produces **chunk-level CLS embeddings**, not one mean-pooled vector per
+  presidents sentence
+- it writes a parquet file containing embedded rows, rather than the exact
+  `presidents_clean_bert.parquet` plus `.npy` pair used by the clean BiLSTM
+
+So `spark/embed.py` is still useful for experiments, but it is **not** the
+canonical rebuild path for the presidents BiLSTM submission pipeline.
 
 ## Important Evaluation Note
 
@@ -192,7 +271,9 @@ Main outputs:
 ### 3. Train the contextual CamemBERT classifier
 
 This model uses `camembert-base` with a small local context window around each
-sentence.
+sentence. Unlike the BiLSTM path, it does **not** consume precomputed `.npy`
+sentence embeddings; it reads the presidents parquet metadata and tokenizes the
+text directly during training and prediction.
 
 ```bash
 uv run --project envs/py314 python spark/train_pres_camembert_simple.py \

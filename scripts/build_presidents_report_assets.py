@@ -1442,7 +1442,9 @@ def plot_model_comparison_oof(model_comparison_frame):
     return fig
 
 
-def plot_fusion_alpha_sweep(fusion_dir, camembert_train_dir):
+def plot_fusion_alpha_sweep(fusion_dir, camembert_train_dir=None):
+    if camembert_train_dir is None:
+        camembert_train_dir = locate_camembert_train_dir()
     alpha_sweep = build_fusion_alpha_sweep_frame(fusion_dir, camembert_train_dir)
     selected_alpha = float(load_json(Path(fusion_dir) / "metrics.json")["calibration"]["alpha"])
     selected_row = alpha_sweep.loc[np.isclose(alpha_sweep["alpha"], selected_alpha)].iloc[0]
