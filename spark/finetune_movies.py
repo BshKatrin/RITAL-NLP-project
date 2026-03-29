@@ -10,6 +10,7 @@ import mlflow
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.common.models.finetune_utils import prepare_train_test, compute_metrics, tokenize_head
 from rital_nlp_project.movies.models_utils import split_fn
+from spark import SEED, set_global_seed
 
 DATASET_PATH = "Dataset/clean/movies_clean_bert.parquet"
 BASE_MODEL = "google-bert/bert-base-uncased"
@@ -38,6 +39,7 @@ NO_DECAY_PARAMS = ["bias", "LayerNorm.weight", "layernorm.weight"]
 
 
 def main() -> None:
+    set_global_seed(SEED)
     train_dataset, test_dataset = prepare_train_test(load_clean_data, DATASET_PATH, split_fn=split_fn)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -97,6 +99,8 @@ def main() -> None:
         load_best_model_at_end=True,
         max_grad_norm=MAX_GRAD_NORM,
         warmup_ratio=WARMUP_RATIO,
+        seed=SEED,
+        data_seed=SEED,
     )
 
     optimizer_grouped_parameters = [

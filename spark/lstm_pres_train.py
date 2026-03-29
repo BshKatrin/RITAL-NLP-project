@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 from rital_nlp_project.common.models.finetune_utils import prepare_train_test, calc_weights
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.presidents.lstm import BiLSTMClassifier, build_probability_windows, weighted_bce_with_logits
+from spark import SEED, set_global_seed
 
 
 DATA_PATH = "Dataset/clean/presidents_clean_bert.parquet"
@@ -85,6 +86,7 @@ def eval_epoch(model, dataloader, criterion, device):
 
 
 def main():
+    set_global_seed(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dataset = prepare_train_test(load_clean_data, DATA_PATH, split_fn=None)
@@ -99,7 +101,12 @@ def main():
     base_probs = probs_df["prob_1"].to_numpy(dtype=np.float32)
     windows = build_probability_windows(base_probs, k=K)
 
-    train_loader = DataLoader(ProbabilityWindowDataset(windows, labels), batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = DataLoader(
+        ProbabilityWindowDataset(windows, labels),
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        generator=torch.Generator().manual_seed(SEED),
+    )
 
     class_weights = calc_weights(dataset)
     # label_counts = np.bincount(labels.astype(np.int64), minlength=NUM_LABELS)

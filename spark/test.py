@@ -1,5 +1,9 @@
 import torch
 
+from spark import SEED, set_global_seed
+
+set_global_seed(SEED)
+
 print("CUDA available:", torch.cuda.is_available())
 print("sm", torch.cuda.get_device_capability())
 print(list(torch.cuda.get_arch_list()))

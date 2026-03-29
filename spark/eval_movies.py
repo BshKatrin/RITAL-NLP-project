@@ -6,21 +6,22 @@ import pandas as pd
 
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.common.models.finetune_utils import prepare_train_test, tokenize_head
+from spark import SEED, set_global_seed
 
 
 MODEL_PATH = "Dataset/finetune/model_bert_head"
 TOKENIZER_PATH = "Dataset/finetune/tokenizer_bert_head"
 DATASET_PATH = "Dataset/clean/movies_test.parquet"
 OUTPUT_PATH = "Dataset/predictions/movies_test_pred_head.csv"
-NUM_LABELS = 2
 BATCH_SIZE = 128
 
 
 @torch.inference_mode()
 def main() -> None:
+    set_global_seed(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH)
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH, num_labels=NUM_LABELS).to(device)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH, num_labels=2).to(device)
     model.eval()
 
     dataset_test = prepare_train_test(load_clean_data, DATASET_PATH, split_fn=None)

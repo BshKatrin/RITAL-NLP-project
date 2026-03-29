@@ -4,6 +4,7 @@ import pandas as pd
 from pathlib import Path
 from transformers import AutoTokenizer, AutoModel
 from rital_nlp_project.common.utils import load_clean_data
+from spark import SEED, set_global_seed
 
 CONFIG = {
     "google-bert/bert-base-uncased": {
@@ -26,6 +27,8 @@ DATA_PATH = "Dataset/clean/movies_test.parquet"
 DATASET_NAME = Path(DATA_PATH).stem
 MAX_LENGTH = CONFIG[MODEL_NAME_OR_PATH]["max_length"]
 STRIDE = CONFIG[MODEL_NAME_OR_PATH]["stride"]
+
+set_global_seed(SEED)
 
 tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME_OR_PATH)
 model = AutoModel.from_pretrained(MODEL_NAME_OR_PATH)
@@ -53,7 +56,7 @@ if STRIDE is not None:
 for example_id, text in enumerate(texts):
     print(example_id)
     label = labels[example_id] if labels is not None else None
-    
+
     tokens = tokenizer(text, **tokenizer_kwargs)
     input_ids = tokens["input_ids"].to(device)
     attention_mask = tokens["attention_mask"].to(device)

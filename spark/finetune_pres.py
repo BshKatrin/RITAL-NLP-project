@@ -12,6 +12,7 @@ import mlflow
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.common.models.finetune_utils import prepare_train_test, tokenize_head, calc_weights
 from rital_nlp_project.presidents.models_utils import split_fn
+from spark import SEED, set_global_seed
 
 DATASET_PATH = "Dataset/clean/presidents_clean_bert.parquet"
 BASE_MODEL = "almanach/camembert-large"
@@ -57,6 +58,7 @@ class WeightedTrainer(Trainer):
 
 
 def main() -> None:
+    set_global_seed(SEED)
     train_dataset = prepare_train_test(load_clean_data, DATASET_PATH, split_fn=None)
 
     train_dataset = train_dataset.map(
@@ -133,6 +135,8 @@ def main() -> None:
         load_best_model_at_end=False,
         max_grad_norm=MAX_GRAD_NORM,
         warmup_ratio=WARMUP_RATIO,
+        seed=SEED,
+        data_seed=SEED,
     )
 
     optimizer_grouped_parameters = [

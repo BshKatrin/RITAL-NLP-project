@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 
 from rital_nlp_project.presidents.lstm import BiLSTMClassifier, build_probability_windows
+from spark import SEED, set_global_seed
 
 MODEL_PATH = "Dataset/finetune/model_lstm_pres.pt"
 CONFIG_PATH = "Dataset/finetune/model_lstm_pres_config.json"
@@ -20,6 +21,7 @@ DEFAULT_DROPOUT = 0.2
 
 @torch.inference_mode()
 def main():
+    set_global_seed(SEED)
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError(f"Missing trained model: {MODEL_PATH}")
     if not os.path.exists(CONFIG_PATH):

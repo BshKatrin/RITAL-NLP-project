@@ -6,6 +6,7 @@ import pandas as pd
 
 from rital_nlp_project.common.utils import load_clean_data
 from rital_nlp_project.common.models.finetune_utils import prepare_train_test, tokenize_head
+from spark import SEED, set_global_seed
 
 
 MODEL_PATH = "Dataset/finetune/model_camembert_head"
@@ -19,6 +20,7 @@ BATCH_SIZE = 128
 
 @torch.inference_mode()
 def main() -> None:
+    set_global_seed(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH)
     model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH, num_labels=NUM_LABELS).to(device)
