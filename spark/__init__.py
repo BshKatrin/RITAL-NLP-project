@@ -21,8 +21,3 @@ def set_global_seed(seed: int = SEED) -> None:
 
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    try:
-        # Keep training/inference deterministic where kernels support it.
-        torch.use_deterministic_algorithms(True, warn_only=True)
-    except Exception:
-        pass
