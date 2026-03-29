@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import shlex
 import subprocess
@@ -9,8 +10,9 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
+import numpy as np
 import pandas as pd
 
 
@@ -20,15 +22,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 @dataclass(frozen=True)
 class SweepConfig:
     name: str
-    minority_weight_scale: float
+    hidden_dim: int
+    projection_dim: int
     dropout: float
+    minority_weight_scale: float
+    epochs: int
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run the requested simple presidents BiLSTM sweep, aggregate OOF "
-            "metrics, and optionally generate best-run submission files."
+            "Run a configurable simple presidents BiLSTM sweep, aggregate clean OOF "
+            "metrics, and optionally score every submission against the accepted "
+            "archive proxy labels."
         )
     )
     parser.add_argument(
@@ -48,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         default="Dataset/clean/presidents_test_clean_bert.parquet",
     )
     parser.add_argument(
+        "--proxy-labels-path",
+        default=None,
+        help="Optional accepted archive-label CSV used for offline proxy scoring.",
+    )
+    parser.add_argument(
         "--output-root",
         default="Dataset/out",
         help="Base directory used for all per-run outputs and summaries.",
@@ -55,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--python-executable",
         default=sys.executable,
-        help="Python interpreter used to launch the train/predict scripts.",
+        help="Python interpreter used to launch the training and scoring scripts.",
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--validation-size", type=float, default=0.15)
@@ -81,40 +92,85 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--threshold-step", type=float, default=0.005)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
-        "--include-optional-dropout-03",
-        action="store_true",
-        help="Also run the optional dropout=0.3 configs described in the request.",
-    )
-    parser.add_argument(
-        "--skip-prediction",
-        action="store_true",
-        help="Skip the final test-set prediction step even if test files exist.",
-    )
-    parser.add_argument(
         "--extra-raw-threshold-offsets",
         nargs="*",
         type=float,
         default=[0.0, 0.01, 0.02],
         help="Raw-threshold offsets used for extra label-only submission variants.",
     )
+    parser.add_argument(
+        "--hidden-dims",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Optional hidden-dim sweep values. Defaults to --hidden-dim.",
+    )
+    parser.add_argument(
+        "--projection-dims",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Optional projection-dim sweep values. Defaults to --projection-dim.",
+    )
+    parser.add_argument(
+        "--dropouts",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Dropout values for the sweep. Defaults to [0.2].",
+    )
+    parser.add_argument(
+        "--minority-weight-scales",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Minority-class loss scales. Defaults to [1.0, 0.9, 0.75, 0.6].",
+    )
+    parser.add_argument(
+        "--epochs-grid",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Epoch counts to sweep. Defaults to [--epochs].",
+    )
+    parser.add_argument(
+        "--max-runs",
+        type=int,
+        default=None,
+        help="Optional cap; sampled deterministically from the full grid using --seed.",
+    )
+    parser.add_argument(
+        "--ranking-mode",
+        choices=("clean", "proxy", "hybrid"),
+        default="hybrid",
+        help="How the best run is selected once all metrics are available.",
+    )
+    parser.add_argument(
+        "--per-run-prediction",
+        action="store_true",
+        help="Run test-set prediction for every config instead of only the best clean run.",
+    )
+    parser.add_argument(
+        "--skip-prediction",
+        action="store_true",
+        help="Skip the final test-set prediction step entirely.",
+    )
     return parser.parse_args()
 
 
-def build_sweep_configs(include_optional_dropout_03: bool) -> list[SweepConfig]:
-    configs = [
-        SweepConfig("mw100", 1.00, 0.2),
-        SweepConfig("mw090", 0.90, 0.2),
-        SweepConfig("mw075", 0.75, 0.2),
-        SweepConfig("mw060", 0.60, 0.2),
-    ]
-    if include_optional_dropout_03:
-        configs.extend(
-            [
-                SweepConfig("mw090_do030", 0.90, 0.3),
-                SweepConfig("mw075_do030", 0.75, 0.3),
-            ]
-        )
-    return configs
+def ensure_input_exists(path_str: str | None) -> None:
+    if path_str is None:
+        return
+    path = Path(path_str)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    if not path.exists():
+        raise FileNotFoundError(f"Required input file does not exist: {path}")
+
+
+def float_tag(value: float) -> str:
+    text = f"{value:.3f}".rstrip("0").rstrip(".")
+    return text.replace("-", "m").replace(".", "p")
 
 
 def training_output_dir(output_root: Path, config: SweepConfig) -> Path:
@@ -125,19 +181,7 @@ def submission_output_dir(output_root: Path, config_name: str) -> Path:
     return output_root / f"presidents_lstm_simple_submission_tuned_{config_name}"
 
 
-def ensure_input_exists(path_str: str) -> None:
-    path = Path(path_str)
-    if not path.is_absolute():
-        path = REPO_ROOT / path
-    if not path.exists():
-        raise FileNotFoundError(f"Required input file does not exist: {path}")
-
-
-def run_command(
-    command: list[str],
-    *,
-    log_path: Path,
-) -> dict[str, Any]:
+def run_command(command: list[str], *, log_path: Path) -> dict[str, Any]:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     started_at = datetime.now().astimezone().isoformat()
     start = time.perf_counter()
@@ -163,11 +207,60 @@ def run_command(
     }
 
 
-def load_run_metrics(run_dir: Path) -> dict[str, Any]:
-    metrics_path = run_dir / "metrics.json"
-    if not metrics_path.exists():
-        raise FileNotFoundError(f"Missing metrics file: {metrics_path}")
-    return json.loads(metrics_path.read_text())
+def load_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"Missing JSON file: {path}")
+    return json.loads(path.read_text())
+
+
+def resolve_grid_values(
+    override: Iterable[Any] | None,
+    fallback: Iterable[Any],
+) -> list[Any]:
+    values = list(fallback if override is None else override)
+    return list(dict.fromkeys(values))
+
+
+def build_sweep_configs(args: argparse.Namespace) -> list[SweepConfig]:
+    hidden_dims = resolve_grid_values(args.hidden_dims, [args.hidden_dim])
+    projection_dims = resolve_grid_values(args.projection_dims, [args.projection_dim])
+    dropouts = resolve_grid_values(args.dropouts, [0.2])
+    minority_weight_scales = resolve_grid_values(
+        args.minority_weight_scales,
+        [1.0, 0.9, 0.75, 0.6],
+    )
+    epochs_grid = resolve_grid_values(args.epochs_grid, [args.epochs])
+
+    configs = []
+    for hidden_dim, projection_dim, dropout, minority_weight_scale, epochs in itertools.product(
+        hidden_dims,
+        projection_dims,
+        dropouts,
+        minority_weight_scales,
+        epochs_grid,
+    ):
+        name = (
+            f"hd{hidden_dim}_pd{projection_dim}_do{float_tag(dropout)}_"
+            f"mw{float_tag(minority_weight_scale)}_ep{epochs}"
+        )
+        configs.append(
+            SweepConfig(
+                name=name,
+                hidden_dim=int(hidden_dim),
+                projection_dim=int(projection_dim),
+                dropout=float(dropout),
+                minority_weight_scale=float(minority_weight_scale),
+                epochs=int(epochs),
+            )
+        )
+
+    if args.max_runs is not None and args.max_runs < len(configs):
+        rng = np.random.default_rng(args.seed)
+        selected = np.sort(
+            rng.choice(len(configs), size=args.max_runs, replace=False)
+        )
+        configs = [configs[int(idx)] for idx in selected]
+    return configs
 
 
 def summary_row_from_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
@@ -180,8 +273,11 @@ def summary_row_from_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     return {
         "run_name": Path(config["output_dir"]).name,
         "output_dir": str(Path(config["output_dir"]).resolve()),
-        "minority_weight_scale": float(config["minority_weight_scale"]),
+        "hidden_dim": int(config["hidden_dim"]),
+        "projection_dim": int(config["projection_dim"]),
         "dropout": float(config["dropout"]),
+        "epochs": int(config["epochs"]),
+        "minority_weight_scale": float(config["minority_weight_scale"]),
         "best_epoch": int(metrics["best_epoch"]),
         "validation_best_f1": float(metrics["best_validation_f1_macro"]),
         "validation_best_threshold": float(
@@ -208,14 +304,64 @@ def summary_row_from_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def choose_best_run(summary_frame: pd.DataFrame) -> pd.Series:
+def attach_proxy_metrics(
+    row: dict[str, Any],
+    *,
+    proxy_metrics: dict[str, Any],
+    proxy_eval_dir: Path,
+) -> dict[str, Any]:
+    enriched = dict(row)
+    enriched["proxy_eval_dir"] = str(proxy_eval_dir.resolve())
+    enriched["proxy_f1_macro"] = float(proxy_metrics["f1_macro"])
+    enriched["proxy_accuracy"] = float(proxy_metrics["accuracy"])
+    enriched["proxy_balanced_accuracy"] = float(proxy_metrics["balanced_accuracy"])
+    enriched["proxy_agreement"] = float(proxy_metrics["agreement"])
+    enriched["proxy_disagreement_count"] = int(proxy_metrics["disagreement_count"])
+    enriched["proxy_accepted_rows"] = int(proxy_metrics["accepted_rows"])
+    enriched["proxy_unresolved_rows"] = int(proxy_metrics["unresolved_rows"])
+    return enriched
+
+
+def choose_best_run(summary_frame: pd.DataFrame, *, ranking_mode: str) -> pd.Series:
+    has_proxy = "proxy_f1_macro" in summary_frame.columns and summary_frame[
+        "proxy_f1_macro"
+    ].notna().any()
+
+    if ranking_mode == "clean" or not has_proxy:
+        ordered = summary_frame.sort_values(
+            [
+                "oof_f1_at_tuned_threshold",
+                "end_lag_mean",
+                "multi_block_speeches",
+            ],
+            ascending=[False, True, True],
+            na_position="last",
+        ).reset_index(drop=True)
+        return ordered.iloc[0]
+
+    if ranking_mode == "proxy":
+        ordered = summary_frame.sort_values(
+            [
+                "proxy_f1_macro",
+                "proxy_balanced_accuracy",
+                "oof_f1_at_tuned_threshold",
+                "end_lag_mean",
+                "multi_block_speeches",
+            ],
+            ascending=[False, False, False, True, True],
+            na_position="last",
+        ).reset_index(drop=True)
+        return ordered.iloc[0]
+
     ordered = summary_frame.sort_values(
         [
+            "proxy_f1_macro",
             "oof_f1_at_tuned_threshold",
+            "proxy_balanced_accuracy",
             "end_lag_mean",
             "multi_block_speeches",
         ],
-        ascending=[False, True, True],
+        ascending=[False, False, False, True, True],
         na_position="last",
     ).reset_index(drop=True)
     return ordered.iloc[0]
@@ -229,24 +375,86 @@ def series_record(series: pd.Series) -> dict[str, Any]:
     return dataframe_records(series.to_frame().T)[0]
 
 
+def predict_and_optionally_score(
+    *,
+    args: argparse.Namespace,
+    config_name: str,
+    checkpoint_path: Path,
+    calibration_path: Path,
+    output_root: Path,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    predict_dir = submission_output_dir(output_root, config_name)
+    predict_log_path = predict_dir / "run.log"
+    predict_command = [
+        args.python_executable,
+        "spark/predict_pres_lstm_simple.py",
+        "--checkpoint-path",
+        str(checkpoint_path),
+        "--calibration-path",
+        str(calibration_path),
+        "--test-embeddings-path",
+        args.test_embeddings_path,
+        "--test-metadata-path",
+        args.test_metadata_path,
+        "--output-dir",
+        str(predict_dir),
+        "--device",
+        args.device,
+        "--decision-threshold",
+        "0.5",
+    ]
+    if args.extra_raw_threshold_offsets:
+        predict_command.append("--extra-raw-threshold-offsets")
+        predict_command.extend(str(offset) for offset in args.extra_raw_threshold_offsets)
+
+    prediction_record = run_command(predict_command, log_path=predict_log_path)
+
+    proxy_metrics = None
+    if args.proxy_labels_path is not None:
+        proxy_eval_dir = predict_dir / "proxy_eval"
+        proxy_command = [
+            args.python_executable,
+            "scripts/eval_presidents_proxy.py",
+            "--prediction-path",
+            str(predict_dir / "submission_label_calibrated.csv"),
+            "--score-path",
+            str(predict_dir / "submission_prob_mitterrand_calibrated.csv"),
+            "--proxy-labels-path",
+            args.proxy_labels_path,
+            "--output-dir",
+            str(proxy_eval_dir),
+        ]
+        run_command(proxy_command, log_path=proxy_eval_dir / "run.log")
+        proxy_metrics = load_json(proxy_eval_dir / "metrics.json")
+    return prediction_record, proxy_metrics
+
+
 def main() -> None:
     args = parse_args()
     ensure_input_exists(args.embeddings_path)
     ensure_input_exists(args.metadata_path)
+    if args.proxy_labels_path is not None:
+        ensure_input_exists(args.proxy_labels_path)
+
+    should_predict_per_run = bool(args.per_run_prediction or args.proxy_labels_path is not None)
+    if should_predict_per_run and args.skip_prediction:
+        raise ValueError("Cannot use --skip-prediction together with per-run prediction")
 
     output_root = Path(args.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     sweep_output_dir = output_root / "presidents_lstm_simple_tuned_sweep"
     sweep_output_dir.mkdir(parents=True, exist_ok=True)
 
-    configs = build_sweep_configs(args.include_optional_dropout_03)
+    configs = build_sweep_configs(args)
+    if not configs:
+        raise ValueError("No sweep configurations were generated")
+
     command_records: list[dict[str, Any]] = []
     summary_rows = []
 
     for config in configs:
         run_dir = training_output_dir(output_root, config)
-        log_path = run_dir / "run.log"
-        command = [
+        train_command = [
             args.python_executable,
             "spark/train_pres_lstm_simple.py",
             "--embeddings-path",
@@ -260,9 +468,9 @@ def main() -> None:
             "--n-folds",
             str(args.n_folds),
             "--hidden-dim",
-            str(args.hidden_dim),
+            str(config.hidden_dim),
             "--projection-dim",
-            str(args.projection_dim),
+            str(config.projection_dim),
             "--num-layers",
             str(args.num_layers),
             "--dropout",
@@ -270,7 +478,7 @@ def main() -> None:
             "--batch-size",
             str(args.batch_size),
             "--epochs",
-            str(args.epochs),
+            str(config.epochs),
             "--learning-rate",
             str(args.learning_rate),
             "--weight-decay",
@@ -298,72 +506,101 @@ def main() -> None:
             "--device",
             args.device,
         ]
-        command_records.append(run_command(command, log_path=log_path))
-        metrics = load_run_metrics(run_dir)
-        summary_rows.append(summary_row_from_metrics(metrics))
+        command_records.append(run_command(train_command, log_path=run_dir / "run.log"))
+
+        metrics = load_json(run_dir / "metrics.json")
+        row = summary_row_from_metrics(metrics)
+
+        if should_predict_per_run:
+            ensure_input_exists(args.test_embeddings_path)
+            ensure_input_exists(args.test_metadata_path)
+            prediction_record, proxy_metrics = predict_and_optionally_score(
+                args=args,
+                config_name=config.name,
+                checkpoint_path=run_dir / "checkpoint.pt",
+                calibration_path=run_dir / "calibration.json",
+                output_root=output_root,
+            )
+            command_records.append(prediction_record)
+            if proxy_metrics is not None:
+                row = attach_proxy_metrics(
+                    row,
+                    proxy_metrics=proxy_metrics,
+                    proxy_eval_dir=submission_output_dir(output_root, config.name) / "proxy_eval",
+                )
+
+        summary_rows.append(row)
 
     summary_frame = pd.DataFrame(summary_rows)
-    best_run = choose_best_run(summary_frame)
+    best_clean_run = choose_best_run(summary_frame, ranking_mode="clean")
+    best_ranked_run = choose_best_run(summary_frame, ranking_mode=args.ranking_mode)
+
+    prediction_record = None
+    if not should_predict_per_run and not args.skip_prediction:
+        ensure_input_exists(args.test_embeddings_path)
+        ensure_input_exists(args.test_metadata_path)
+
+        best_run_dir = Path(best_ranked_run["output_dir"])
+        best_config_name = str(best_ranked_run["run_name"]).replace(
+            "presidents_lstm_simple_tuned_",
+            "",
+        )
+        prediction_record, proxy_metrics = predict_and_optionally_score(
+            args=args,
+            config_name=best_config_name,
+            checkpoint_path=best_run_dir / "checkpoint.pt",
+            calibration_path=best_run_dir / "calibration.json",
+            output_root=output_root,
+        )
+        command_records.append(prediction_record)
+        if proxy_metrics is not None:
+            summary_frame.loc[
+                summary_frame["run_name"] == best_ranked_run["run_name"],
+                [
+                    "proxy_eval_dir",
+                    "proxy_f1_macro",
+                    "proxy_accuracy",
+                    "proxy_balanced_accuracy",
+                    "proxy_agreement",
+                    "proxy_disagreement_count",
+                    "proxy_accepted_rows",
+                    "proxy_unresolved_rows",
+                ],
+            ] = [
+                str((submission_output_dir(output_root, best_config_name) / "proxy_eval").resolve()),
+                float(proxy_metrics["f1_macro"]),
+                float(proxy_metrics["accuracy"]),
+                float(proxy_metrics["balanced_accuracy"]),
+                float(proxy_metrics["agreement"]),
+                int(proxy_metrics["disagreement_count"]),
+                int(proxy_metrics["accepted_rows"]),
+                int(proxy_metrics["unresolved_rows"]),
+            ]
+            best_ranked_run = choose_best_run(summary_frame, ranking_mode=args.ranking_mode)
 
     comparison_csv_path = sweep_output_dir / "comparison_summary.csv"
     comparison_json_path = sweep_output_dir / "comparison_summary.json"
     commands_path = sweep_output_dir / "commands_used.json"
 
     summary_frame.to_csv(comparison_csv_path, index=False)
-    best_run_payload = series_record(best_run)
     comparison_payload = {
         "generated_at": datetime.now().astimezone().isoformat(),
-        "best_run": best_run_payload,
+        "ranking_mode": args.ranking_mode,
+        "best_ranked_run": series_record(best_ranked_run),
+        "best_clean_run": series_record(best_clean_run),
         "runs": dataframe_records(summary_frame),
     }
     comparison_json_path.write_text(json.dumps(comparison_payload, indent=2))
     commands_path.write_text(json.dumps(command_records, indent=2))
-
-    prediction_record = None
-    if not args.skip_prediction:
-        ensure_input_exists(args.test_embeddings_path)
-        ensure_input_exists(args.test_metadata_path)
-
-        best_run_dir = Path(best_run["output_dir"])
-        best_config_name = str(best_run["run_name"]).replace(
-            "presidents_lstm_simple_tuned_",
-            "",
-        )
-        predict_dir = submission_output_dir(output_root, best_config_name)
-        predict_log_path = predict_dir / "run.log"
-
-        predict_command = [
-            args.python_executable,
-            "spark/predict_pres_lstm_simple.py",
-            "--checkpoint-path",
-            str(best_run_dir / "checkpoint.pt"),
-            "--calibration-path",
-            str(best_run_dir / "calibration.json"),
-            "--test-embeddings-path",
-            args.test_embeddings_path,
-            "--test-metadata-path",
-            args.test_metadata_path,
-            "--output-dir",
-            str(predict_dir),
-            "--device",
-            args.device,
-            "--decision-threshold",
-            "0.5",
-        ]
-        if args.extra_raw_threshold_offsets:
-            predict_command.append("--extra-raw-threshold-offsets")
-            predict_command.extend(str(offset) for offset in args.extra_raw_threshold_offsets)
-
-        prediction_record = run_command(predict_command, log_path=predict_log_path)
-        command_records.append(prediction_record)
-        commands_path.write_text(json.dumps(command_records, indent=2))
 
     payload = {
         "generated_at": datetime.now().astimezone().isoformat(),
         "comparison_csv": str(comparison_csv_path.resolve()),
         "comparison_json": str(comparison_json_path.resolve()),
         "commands_used": str(commands_path.resolve()),
-        "best_run": best_run_payload,
+        "ranking_mode": args.ranking_mode,
+        "best_ranked_run": series_record(best_ranked_run),
+        "best_clean_run": series_record(best_clean_run),
         "prediction": prediction_record,
     }
     print(json.dumps(payload, indent=2))
