@@ -49,4 +49,12 @@ Main outputs:
 - `Dataset/out/presidents_lstm_simple_submission/test_predictions_detailed.csv`
 - `Dataset/out/presidents_lstm_simple_submission/submission_prob_mitterrand_raw.csv`
 - `Dataset/out/presidents_lstm_simple_submission/submission_prob_mitterrand_calibrated.csv`
+- `Dataset/out/presidents_lstm_simple_submission/submission_probability.csv`
 - `Dataset/out/presidents_lstm_simple_submission/submission_label_calibrated.csv`
+
+`submission_probability.csv` is the file intended to be paired with the label
+submission. It is the calibrated Mitterrand probability:
+
+- values near `0` mean Chirac
+- values near `1` mean Mitterrand
+- thresholding it at `0.5` reproduces `submission_label_calibrated.csv`

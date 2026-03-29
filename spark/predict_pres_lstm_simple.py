@@ -163,6 +163,15 @@ def main():
         frame["prob_mitterrand_calibrated"].to_numpy(dtype=np.float64),
         float(args.decision_threshold),
     )
+    aligned_labels = labels_from_scores(
+        frame["prob_mitterrand_calibrated"].to_numpy(dtype=np.float64),
+        0.5,
+    )
+    if not np.array_equal(aligned_labels, frame["pred_label_calibrated"].to_numpy()):
+        raise ValueError(
+            "submission labels must be reproducible from the calibrated probability "
+            "file using a 0.5 threshold"
+        )
 
     if "text" in test_metadata.columns:
         frame["text"] = test_metadata["text"].to_numpy()
@@ -179,6 +188,12 @@ def main():
         index=False,
         header=False,
     )
+    submission_probability_path = output_dir / "submission_probability.csv"
+    frame[["prob_mitterrand_calibrated"]].to_csv(
+        submission_probability_path,
+        index=False,
+        header=False,
+    )
 
     label_path = output_dir / "submission_label_calibrated.csv"
     frame[["pred_label_calibrated"]].to_csv(label_path, index=False, header=False)
@@ -192,10 +207,17 @@ def main():
         "tuned_raw_threshold": tuned_raw_threshold,
         "equivalent_score_delta": delta,
         "label_counts": frame["pred_label_calibrated"].value_counts().to_dict(),
+        "submission_probability_semantics": (
+            "Single-column probability that the row belongs to Mitterrand: "
+            "0 means Chirac-like, 1 means Mitterrand-like. "
+            "Thresholding submission_probability.csv at 0.5 reproduces "
+            "submission_label_calibrated.csv."
+        ),
         "outputs": {
             "detailed_predictions": str(detailed_path.resolve()),
             "submission_prob_mitterrand_raw": str(raw_prob_path.resolve()),
             "submission_prob_mitterrand_calibrated": str(calibrated_prob_path.resolve()),
+            "submission_probability": str(submission_probability_path.resolve()),
             "submission_label_calibrated": str(label_path.resolve()),
         },
     }
