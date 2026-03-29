@@ -12,6 +12,8 @@ tmes/out
 *.js
 *.css
 models/
+docs/RITAL_NLP_Projet-2_h22/
+main-2.pdf
 
 # uv
 uv.lock
