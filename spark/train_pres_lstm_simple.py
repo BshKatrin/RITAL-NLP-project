@@ -33,7 +33,8 @@ from rital_nlp_project.presidents import (
 
 
 INDEX_TO_LABEL = np.array(PRESIDENT_LABEL_ORDER, dtype=np.int64)
-NEGATIVE_INDEX = int(np.where(INDEX_TO_LABEL == -1)[0][0])
+# In this task, label -1 is Francois Mitterrand and 1 is Jacques Chirac.
+MITTERRAND_INDEX = int(np.where(INDEX_TO_LABEL == -1)[0][0])
 
 
 def default_device() -> str:
@@ -110,7 +111,7 @@ def maybe_slice_sequences(
     return list(sequences[:limit])
 
 
-def speech_targets(sequences: list[SpeechSequence]) -> np.ndarray:
+def speech_has_mitterrand_targets(sequences: list[SpeechSequence]) -> np.ndarray:
     return np.array(
         [
             int(sequence.labels is not None and np.any(sequence.labels == -1))
@@ -131,7 +132,7 @@ def stratified_train_validation_split(
     if len(sequences) < 2:
         raise ValueError("Need at least two speeches to build a validation split")
 
-    targets = speech_targets(sequences)
+    targets = speech_has_mitterrand_targets(sequences)
     min_count = int(np.bincount(targets).min()) if len(targets) else 0
 
     if min_count >= 2:
@@ -162,7 +163,7 @@ def build_cv_splits(
     n_folds: int,
     seed: int,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
-    targets = speech_targets(sequences)
+    targets = speech_has_mitterrand_targets(sequences)
     min_count = int(np.bincount(targets).min()) if len(targets) else 0
 
     if min_count >= n_folds:
@@ -265,7 +266,7 @@ def collect_predictions(
                         "sentence_ids": sentence_ids[row_idx, :length].copy(),
                         "label_indices": label_indices,
                         "labels": INDEX_TO_LABEL[label_indices].copy(),
-                        "prob_mitterrand_raw": probabilities[row_idx, :length, NEGATIVE_INDEX].copy(),
+                        "prob_mitterrand_raw": probabilities[row_idx, :length, MITTERRAND_INDEX].copy(),
                     }
                 )
 

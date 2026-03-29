@@ -23,7 +23,8 @@ from rital_nlp_project.presidents import (
 
 
 INDEX_TO_LABEL = np.array(PRESIDENT_LABEL_ORDER, dtype=np.int64)
-NEGATIVE_INDEX = int(np.where(INDEX_TO_LABEL == -1)[0][0])
+# In this task, label -1 is Francois Mitterrand and 1 is Jacques Chirac.
+MITTERRAND_INDEX = int(np.where(INDEX_TO_LABEL == -1)[0][0])
 
 
 def default_device() -> str:
@@ -143,7 +144,7 @@ def collect_predictions(
                     {
                         "speech_id": int(speech_ids[row_idx]),
                         "sentence_ids": sentence_ids[row_idx, :length].copy(),
-                        "prob_mitterrand_raw": probabilities[row_idx, :length, NEGATIVE_INDEX].copy(),
+                        "prob_mitterrand_raw": probabilities[row_idx, :length, MITTERRAND_INDEX].copy(),
                     }
                 )
 
