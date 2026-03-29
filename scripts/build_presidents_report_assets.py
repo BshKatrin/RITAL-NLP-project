@@ -955,11 +955,31 @@ def plot_fold_heatmap(fold_metrics):
             "pr_auc": "PR AUC",
         }
     )
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    sns.heatmap(heatmap_frame, annot=True, fmt=".3f", cmap="YlGnBu", cbar=False, ax=ax)
+    fig, ax = plt.subplots(figsize=(10.4, 5.0))
+    sns.heatmap(
+        heatmap_frame,
+        annot=True,
+        fmt=".3f",
+        cmap="viridis",
+        cbar=True,
+        cbar_kws={"label": "Metric value", "shrink": 0.92, "aspect": 16, "pad": 0.05},
+        linewidths=1.0,
+        linecolor="white",
+        annot_kws={"size": 8.5, "weight": "semibold"},
+        ax=ax,
+    )
+    color_mesh = ax.collections[0]
+    for text, value in zip(ax.texts, heatmap_frame.to_numpy().ravel()):
+        text.set_color("white" if color_mesh.norm(value) < 0.55 else "#1f1f1f")
+    cbar = color_mesh.colorbar
+    cbar.ax.tick_params(labelsize=8.5)
+    cbar.set_label("Metric value", size=9.5, labelpad=8)
     ax.set_title("Selected BiLSTM: Metrics by OOF Fold")
     ax.set_xlabel("")
     ax.set_ylabel("Fold")
+    ax.tick_params(axis="x", labelsize=8.5)
+    ax.tick_params(axis="y", labelsize=8.5)
+    fig.tight_layout()
     return fig
 
 
@@ -1135,10 +1155,10 @@ def plot_lag_distributions(
     speech_metrics,
     comparison_speech_metrics=None,
     comparison_label="Worse-Boundary BiLSTM",
-    focus_range=(-15, 15),
-    bin_width=1,
+    focus_range=(-7, 7),
+    bin_width=1.0,
 ):
-    fig, ax = plt.subplots(figsize=(11.8, 5.9))
+    fig, ax = plt.subplots(figsize=(10.4, 6.4))
     series = [
         {
             "values": speech_metrics["start_lag"].dropna().astype(float).to_numpy(),
@@ -1160,20 +1180,20 @@ def plot_lag_distributions(
                 {
                     "values": comparison_speech_metrics["start_lag"].dropna().astype(float).to_numpy(),
                     "label": f"{comparison_label} - Start Lag",
-                    "color": "#4c72b0",
+                    "color": "#8c2d4f",
                     "linestyle": "--",
                 },
                 {
                     "values": comparison_speech_metrics["end_lag"].dropna().astype(float).to_numpy(),
                     "label": f"{comparison_label} - End Lag",
-                    "color": "#dd8452",
+                    "color": "#b24a2f",
                     "linestyle": "--",
                 },
             ]
         )
 
     low, high = focus_range
-    bins = np.arange(low, high + bin_width, bin_width)
+    bins = np.arange(low - 0.5, high + 1.5, bin_width)
     hidden_points = 0
 
     for item in series:
@@ -1199,33 +1219,37 @@ def plot_lag_distributions(
     ax.axvline(0, color="#2f2f2f", linestyle="--", linewidth=1.2)
     ax.set_ylabel("Density")
     ax.set_xlabel("Lag in Sentence Indices")
-    ax.set_xlim(low, high)
-    ax.set_xticks(np.arange(low, high + 1, 5))
+    ax.set_xlim(low - 0.5, high + 0.5)
+    ax.set_xticks(np.arange(low, high + 1, 1))
     ax.set_title(
         "Boundary Error Distribution for the Selected BiLSTM"
         if comparison_speech_metrics is None
-        else "Boundary Error Distribution Around the True Span"
+        else "Boundary Error Distribution Around the True Span",
+        pad=14,
     )
     ax.legend(
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1.0),
-        borderaxespad=0.0,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.18),
         frameon=True,
         fontsize=9,
+        ncol=2,
+        columnspacing=1.3,
+        handlelength=2.8,
     )
     if comparison_speech_metrics is not None and hidden_points > 0:
-        fig.text(
-            0.125,
-            0.02,
+        ax.text(
+            0.5,
+            1.005,
             f"Central window [{low}, {high}] sentence indices; {hidden_points} extreme lag values omitted.",
-            ha="left",
+            transform=ax.transAxes,
+            ha="center",
             va="bottom",
-            fontsize=9,
+            fontsize=8.8,
             color="#3a3a3a",
         )
-        fig.tight_layout(rect=(0, 0.06, 0.78, 1))
+        fig.tight_layout(rect=(0, 0.12, 1, 0.95))
     else:
-        fig.tight_layout(rect=(0, 0, 0.78, 1))
+        fig.tight_layout(rect=(0, 0.12, 1, 1))
     return fig
 
 
