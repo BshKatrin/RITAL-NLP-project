@@ -38,7 +38,7 @@ NO_DECAY_PARAMS = ["bias", "LayerNorm.weight", "layernorm.weight"]
 
 
 def main() -> None:
-    train_dataset = prepare_train_test(load_clean_data, DATASET_PATH, split_fn=split_fn)
+    train_dataset, test_dataset = prepare_train_test(load_clean_data, DATASET_PATH, split_fn=split_fn)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Tokenizer & model

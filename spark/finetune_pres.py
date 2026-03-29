@@ -75,7 +75,7 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(
         BASE_MODEL,
-        num_labels=NUM_LABELS,
+        num_labels=2,
     ).to(device)
 
     # Train only classification head

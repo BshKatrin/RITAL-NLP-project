@@ -8,10 +8,10 @@ import torch
 
 from rital_nlp_project.presidents.lstm import BiLSTMClassifier, build_probability_windows
 
-MODEL_PATH = "Dataset/finetune/model_lstm_pres_log_reg.pt"
+MODEL_PATH = "Dataset/finetune/model_lstm_pres.pt"
 CONFIG_PATH = "Dataset/finetune/model_lstm_pres_config.json"
-OUTPUT_PATH = "Dataset/finetune/presidents_test_smoothed_probs_lstm_log_reg.csv"
-TEST_PROBS_PATH = "Dataset/pred_test_log_reg.csv"
+OUTPUT_PATH = "Dataset/finetune/presidents_test_smoothed_probs_lstm.csv"
+TEST_PROBS_PATH = "Dataset/predictions/presidents_test_pred_head.csv"
 
 DEFAULT_HIDDEN_DIM = 64
 DEFAULT_NUM_LAYERS = 1

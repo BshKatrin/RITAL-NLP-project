@@ -12,7 +12,7 @@ from rital_nlp_project.presidents.lstm import BiLSTMClassifier, build_probabilit
 
 
 DATA_PATH = "Dataset/clean/presidents_clean_bert.parquet"
-BASE_PROBS_PATH = "Dataset/presidents_train_pred_head.csv"
+BASE_PROBS_PATH = "Dataset/predictions/presidents_train_pred_head.csv"
 
 OUTPUT_MODEL_PATH = "Dataset/finetune/model_lstm_pres_log_reg.pt"
 OUTPUT_PROBS_PATH = "Dataset/finetune/presidents_train_smoothed_probs_lstm.csv"
