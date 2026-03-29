@@ -54,6 +54,10 @@ MODEL_PLOT_LABEL_MAP = {
     REPORT_SAFE_CAMEMBERT_NAME: "CamemBERT",
     REPORT_SAFE_FUSION_NAME: "Fusion",
 }
+POSITIVE_CLASS_NAME = "Mitterrand"
+POSITIVE_PRECISION_LABEL = "Precision (M)"
+POSITIVE_RECALL_LABEL = "Recall (M)"
+POSITIVE_F1_LABEL = "F1 (M)"
 
 
 def configure_plot_style(seaborn_theme="darkgrid", context="talk"):
@@ -125,6 +129,9 @@ def compute_metrics(y_true, probabilities, threshold):
         "threshold": float(threshold),
         "accuracy": float(accuracy_score(y_true, y_pred)),
         "balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
+        "precision_mitterrand": float(precision_score(y_true_binary, y_pred_binary, zero_division=0)),
+        "recall_mitterrand": float(recall_score(y_true_binary, y_pred_binary, zero_division=0)),
+        "f1_mitterrand": float(f1_score(y_true_binary, y_pred_binary, zero_division=0)),
         "precision_macro": float(
             precision_score(y_true, y_pred, average="macro", zero_division=0)
         ),
@@ -248,7 +255,6 @@ def aggregate_simple_sweep_runs():
         )
 
         record = {
-            "rank_oof_tuned_f1": rank,
             "run_name": run["run_name"],
             "short_label": make_short_run_label(run),
             "hidden_dim": int(run["hidden_dim"]),
@@ -261,6 +267,9 @@ def aggregate_simple_sweep_runs():
             "tuned_threshold": float(calibration["threshold"]),
             "train_time_seconds": float(history["epoch_seconds"].sum()),
             "oof_accuracy_tuned": float(tuned_metrics["accuracy"]),
+            "oof_precision_mitterrand_tuned": float(tuned_metrics["precision_mitterrand"]),
+            "oof_recall_mitterrand_tuned": float(tuned_metrics["recall_mitterrand"]),
+            "oof_f1_mitterrand_tuned": float(tuned_metrics["f1_mitterrand"]),
             "oof_balanced_accuracy_tuned": float(tuned_metrics["balanced_accuracy"]),
             "oof_precision_macro_tuned": float(tuned_metrics["precision_macro"]),
             "oof_recall_macro_tuned": float(tuned_metrics["recall_macro"]),
@@ -268,6 +277,7 @@ def aggregate_simple_sweep_runs():
             "oof_roc_auc": float(tuned_metrics["roc_auc"]),
             "oof_pr_auc": float(tuned_metrics["pr_auc"]),
             "oof_accuracy_0p5": float(default_metrics["accuracy"]),
+            "oof_f1_mitterrand_0p5": float(default_metrics["f1_mitterrand"]),
             "oof_f1_macro_0p5": float(default_metrics["f1_macro"]),
             "start_lag_mean": float(speech_metrics["start_lag"].mean()),
             "end_lag_mean": float(speech_metrics["end_lag"].mean()),
@@ -276,9 +286,10 @@ def aggregate_simple_sweep_runs():
         records.append(record)
 
     frame = pd.DataFrame(records).sort_values(
-        ["oof_f1_macro_tuned", "oof_roc_auc"],
+        ["oof_f1_mitterrand_tuned", "oof_roc_auc"],
         ascending=[False, False],
     ).reset_index(drop=True)
+    frame.insert(0, "rank_oof_tuned_f1", np.arange(1, len(frame) + 1))
     frame.insert(0, "plot_id", [f"R{i+1}" for i in range(len(frame))])
     return frame
 
@@ -296,6 +307,9 @@ def aggregate_clean_main_simple():
     return {
         "model": REPORT_SAFE_CLEAN_NAME,
         "oof_accuracy": float(tuned["accuracy"]),
+        "oof_precision_mitterrand": float(tuned["precision_mitterrand"]),
+        "oof_recall_mitterrand": float(tuned["recall_mitterrand"]),
+        "oof_f1_mitterrand": float(tuned["f1_mitterrand"]),
         "oof_balanced_accuracy": float(tuned["balanced_accuracy"]),
         "oof_precision_macro": float(tuned["precision_macro"]),
         "oof_recall_macro": float(tuned["recall_macro"]),
@@ -325,6 +339,9 @@ def aggregate_camembert(train_dir):
     return {
         "model": REPORT_SAFE_CAMEMBERT_NAME,
         "oof_accuracy": float(tuned["accuracy"]),
+        "oof_precision_mitterrand": float(tuned["precision_mitterrand"]),
+        "oof_recall_mitterrand": float(tuned["recall_mitterrand"]),
+        "oof_f1_mitterrand": float(tuned["f1_mitterrand"]),
         "oof_balanced_accuracy": float(tuned["balanced_accuracy"]),
         "oof_precision_macro": float(tuned["precision_macro"]),
         "oof_recall_macro": float(tuned["recall_macro"]),
@@ -369,6 +386,9 @@ def aggregate_simple_camembert_fusion(camembert_train_dir):
     return {
         "model": REPORT_SAFE_FUSION_NAME,
         "oof_accuracy": float(tuned["accuracy"]),
+        "oof_precision_mitterrand": float(tuned["precision_mitterrand"]),
+        "oof_recall_mitterrand": float(tuned["recall_mitterrand"]),
+        "oof_f1_mitterrand": float(tuned["f1_mitterrand"]),
         "oof_balanced_accuracy": float(tuned["balanced_accuracy"]),
         "oof_precision_macro": float(tuned["precision_macro"]),
         "oof_recall_macro": float(tuned["recall_macro"]),
@@ -391,6 +411,9 @@ def aggregate_report_safe_model_comparison(simple_sweep_frame, camembert_train_d
             {
                 "model": REPORT_SAFE_SIMPLE_NAME,
                 "oof_accuracy": best_simple["oof_accuracy_tuned"],
+                "oof_precision_mitterrand": best_simple["oof_precision_mitterrand_tuned"],
+                "oof_recall_mitterrand": best_simple["oof_recall_mitterrand_tuned"],
+                "oof_f1_mitterrand": best_simple["oof_f1_mitterrand_tuned"],
                 "oof_balanced_accuracy": best_simple["oof_balanced_accuracy_tuned"],
                 "oof_precision_macro": best_simple["oof_precision_macro_tuned"],
                 "oof_recall_macro": best_simple["oof_recall_macro_tuned"],
@@ -447,6 +470,9 @@ def locate_structured_best_run():
         "metrics": {
             "model": REPORT_SAFE_STRUCTURED_NAME,
             "oof_accuracy": float(tuned["accuracy"]),
+            "oof_precision_mitterrand": float(tuned["precision_mitterrand"]),
+            "oof_recall_mitterrand": float(tuned["recall_mitterrand"]),
+            "oof_f1_mitterrand": float(tuned["f1_mitterrand"]),
             "oof_balanced_accuracy": float(tuned["balanced_accuracy"]),
             "oof_precision_macro": float(tuned["precision_macro"]),
             "oof_recall_macro": float(tuned["recall_macro"]),
@@ -553,9 +579,9 @@ def build_paper_model_table(model_comparison_frame, structured_model=None):
         [
             "model",
             "oof_accuracy",
-            "oof_precision_macro",
-            "oof_recall_macro",
-            "oof_f1_macro",
+            "oof_precision_mitterrand",
+            "oof_recall_mitterrand",
+            "oof_f1_mitterrand",
             "oof_roc_auc",
             "oof_pr_auc",
         ]
@@ -563,9 +589,9 @@ def build_paper_model_table(model_comparison_frame, structured_model=None):
         columns={
             "model": "Model",
             "oof_accuracy": "Accuracy",
-            "oof_precision_macro": "Precision",
-            "oof_recall_macro": "Recall",
-            "oof_f1_macro": "Macro-F1",
+            "oof_precision_mitterrand": POSITIVE_PRECISION_LABEL,
+            "oof_recall_mitterrand": POSITIVE_RECALL_LABEL,
+            "oof_f1_mitterrand": POSITIVE_F1_LABEL,
             "oof_roc_auc": "ROC AUC",
             "oof_pr_auc": "PR AUC",
         }
@@ -580,14 +606,14 @@ def build_camera_ready_model_table(model_comparison_frame, structured_model):
             "Accuracy": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_accuracy"
             ].iloc[0],
-            "Precision": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_precision_macro"
+            POSITIVE_PRECISION_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_precision_mitterrand"
             ].iloc[0],
-            "Recall": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_recall_macro"
+            POSITIVE_RECALL_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_recall_mitterrand"
             ].iloc[0],
-            "Macro-F1": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_f1_macro"
+            POSITIVE_F1_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_f1_mitterrand"
             ].iloc[0],
             "ROC AUC": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_SIMPLE_NAME, "oof_roc_auc"
@@ -602,14 +628,14 @@ def build_camera_ready_model_table(model_comparison_frame, structured_model):
             "Accuracy": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_accuracy"
             ].iloc[0],
-            "Precision": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_precision_macro"
+            POSITIVE_PRECISION_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_precision_mitterrand"
             ].iloc[0],
-            "Recall": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_recall_macro"
+            POSITIVE_RECALL_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_recall_mitterrand"
             ].iloc[0],
-            "Macro-F1": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_f1_macro"
+            POSITIVE_F1_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_f1_mitterrand"
             ].iloc[0],
             "ROC AUC": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_CLEAN_NAME, "oof_roc_auc"
@@ -622,9 +648,9 @@ def build_camera_ready_model_table(model_comparison_frame, structured_model):
             "Model": "Structured BiLSTM",
             "Variant": "Single-span decoder",
             "Accuracy": structured_model["metrics"]["oof_accuracy"],
-            "Precision": structured_model["metrics"]["oof_precision_macro"],
-            "Recall": structured_model["metrics"]["oof_recall_macro"],
-            "Macro-F1": structured_model["metrics"]["oof_f1_macro"],
+            POSITIVE_PRECISION_LABEL: structured_model["metrics"]["oof_precision_mitterrand"],
+            POSITIVE_RECALL_LABEL: structured_model["metrics"]["oof_recall_mitterrand"],
+            POSITIVE_F1_LABEL: structured_model["metrics"]["oof_f1_mitterrand"],
             "ROC AUC": structured_model["metrics"]["oof_roc_auc"],
             "PR AUC": structured_model["metrics"]["oof_pr_auc"],
         },
@@ -634,14 +660,14 @@ def build_camera_ready_model_table(model_comparison_frame, structured_model):
             "Accuracy": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_accuracy"
             ].iloc[0],
-            "Precision": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_precision_macro"
+            POSITIVE_PRECISION_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_precision_mitterrand"
             ].iloc[0],
-            "Recall": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_recall_macro"
+            POSITIVE_RECALL_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_recall_mitterrand"
             ].iloc[0],
-            "Macro-F1": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_f1_macro"
+            POSITIVE_F1_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_f1_mitterrand"
             ].iloc[0],
             "ROC AUC": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_CAMEMBERT_NAME, "oof_roc_auc"
@@ -659,14 +685,14 @@ def build_camera_ready_model_table(model_comparison_frame, structured_model):
             "Accuracy": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_accuracy"
             ].iloc[0],
-            "Precision": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_precision_macro"
+            POSITIVE_PRECISION_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_precision_mitterrand"
             ].iloc[0],
-            "Recall": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_recall_macro"
+            POSITIVE_RECALL_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_recall_mitterrand"
             ].iloc[0],
-            "Macro-F1": model_comparison_frame.loc[
-                model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_f1_macro"
+            POSITIVE_F1_LABEL: model_comparison_frame.loc[
+                model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_f1_mitterrand"
             ].iloc[0],
             "ROC AUC": model_comparison_frame.loc[
                 model_comparison_frame["model"] == REPORT_SAFE_FUSION_NAME, "oof_roc_auc"
@@ -786,6 +812,62 @@ def compute_fold_metrics(oof_frame, threshold):
     return pd.DataFrame(records)
 
 
+def build_threshold_sweep_frame(run_dir):
+    run_dir = Path(run_dir)
+    oof_frame = pd.read_csv(run_dir / "oof_predictions.csv")
+    stored_sweep = pd.read_csv(run_dir / "threshold_sweep.csv")
+    score_name = (
+        stored_sweep["selected_score_name"].iloc[0]
+        if "selected_score_name" in stored_sweep.columns
+        else "prob_mitterrand_raw"
+    )
+    records = []
+    for threshold in stored_sweep["threshold"].to_numpy(dtype=np.float64):
+        metrics = compute_metrics(
+            oof_frame["true_label"].to_numpy(dtype=np.int64),
+            oof_frame[score_name].to_numpy(dtype=np.float64),
+            threshold,
+        )
+        records.append(metrics)
+    return pd.DataFrame(records).sort_values("threshold").reset_index(drop=True)
+
+
+def build_fusion_alpha_sweep_frame(fusion_dir, camembert_train_dir):
+    fusion_dir = Path(fusion_dir)
+    stored_alpha_sweep = pd.read_csv(fusion_dir / "alpha_sweep.csv").sort_values("alpha").reset_index(drop=True)
+
+    simple_oof = pd.read_csv(CLEAN_MAIN_SIMPLE_TRAIN_DIR / "oof_predictions.csv").sort_values(
+        ["speech_id", "sentence_id"]
+    ).reset_index(drop=True)
+    camembert_oof = pd.read_csv(Path(camembert_train_dir) / "oof_predictions.csv").sort_values(
+        ["speech_id", "sentence_id"]
+    ).reset_index(drop=True)
+    if not simple_oof[["speech_id", "sentence_id"]].equals(camembert_oof[["speech_id", "sentence_id"]]):
+        raise ValueError("BiLSTM and CamemBERT OOF predictions are not aligned")
+
+    records = []
+    for row in stored_alpha_sweep.itertuples(index=False):
+        fused_scores = weighted_logit_average(
+            simple_oof["prob_mitterrand_raw"].to_numpy(dtype=np.float64),
+            camembert_oof["prob_mitterrand_raw"].to_numpy(dtype=np.float64),
+            float(row.alpha),
+        )
+        metrics = compute_metrics(
+            simple_oof["true_label"].to_numpy(dtype=np.int64),
+            fused_scores,
+            float(row.threshold),
+        )
+        records.append(
+            {
+                "method": row.method,
+                "alpha": float(row.alpha),
+                **metrics,
+                "equivalent_score_delta": float(row.equivalent_score_delta),
+            }
+        )
+    return pd.DataFrame(records).sort_values("alpha").reset_index(drop=True)
+
+
 def choose_example_speeches(speech_metrics):
     clean_candidates = speech_metrics[
         (speech_metrics["has_true_mitterrand_block"])
@@ -829,36 +911,45 @@ def choose_example_speeches(speech_metrics):
 
 
 def plot_simple_sweep_ranking(simple_sweep_frame):
-    plot_frame = simple_sweep_frame.sort_values("oof_f1_macro_tuned", ascending=True)
+    plot_frame = simple_sweep_frame.sort_values("oof_f1_mitterrand_tuned", ascending=True)
     fig, ax = plt.subplots(figsize=(11, 8))
     palette = ["#b8c6db"] * len(plot_frame)
     highlight_index = int(plot_frame.index[plot_frame["rank_oof_tuned_f1"] == 1][0])
     palette[list(plot_frame.index).index(highlight_index)] = "#dd8452"
-    ax.barh(plot_frame["plot_id"], plot_frame["oof_f1_macro_tuned"], color=palette, edgecolor="#2f2f2f")
-    ax.set_xlabel("OOF Macro-F1 at Tuned Threshold")
+    ax.barh(plot_frame["plot_id"], plot_frame["oof_f1_mitterrand_tuned"], color=palette, edgecolor="#2f2f2f")
+    ax.set_xlabel("OOF F1 (Mitterrand positive) at Tuned Threshold")
     ax.set_ylabel("Run ID")
     ax.set_title("BiLSTM Hyperparameter Sweep (12 Runs)")
-    ax.set_xlim(plot_frame["oof_f1_macro_tuned"].min() - 0.003, plot_frame["oof_f1_macro_tuned"].max() + 0.003)
+    ax.set_xlim(
+        plot_frame["oof_f1_mitterrand_tuned"].min() - 0.003,
+        plot_frame["oof_f1_mitterrand_tuned"].max() + 0.003,
+    )
     for _, row in plot_frame.iterrows():
-        ax.text(row["oof_f1_macro_tuned"] + 0.0003, row["plot_id"], row["short_label"], va="center", fontsize=9)
+        ax.text(
+            row["oof_f1_mitterrand_tuned"] + 0.0003,
+            row["plot_id"],
+            row["short_label"],
+            va="center",
+            fontsize=9,
+        )
     return fig
 
 
 def plot_threshold_sweep(best_run_dir):
-    sweep = pd.read_csv(best_run_dir / "threshold_sweep.csv")
+    sweep = build_threshold_sweep_frame(best_run_dir)
+    selected_threshold = float(load_json(Path(best_run_dir) / "calibration.json")["threshold"])
+    selected_row = sweep.loc[np.isclose(sweep["threshold"], selected_threshold)].iloc[0]
     fig, ax = plt.subplots(figsize=(9, 5))
     for column, label, color in (
-        ("f1_macro", "Macro-F1", "#dd8452"),
+        ("f1_mitterrand", "F1 (Mitterrand positive)", "#dd8452"),
         ("accuracy", "Accuracy", "#4c72b0"),
-        ("balanced_accuracy", "Balanced Accuracy", "#55a868"),
     ):
         ax.plot(sweep["threshold"], sweep[column], label=label, linewidth=2.2, color=color)
-    best_row = sweep.sort_values(["f1_macro", "balanced_accuracy", "threshold"], ascending=[False, False, True]).iloc[0]
-    ax.axvline(best_row["threshold"], color="#2f2f2f", linestyle="--", linewidth=1.5)
+    ax.axvline(selected_threshold, color="#2f2f2f", linestyle="--", linewidth=1.5)
     ax.text(
-        float(best_row["threshold"]) + 0.003,
-        float(best_row["f1_macro"]) - 0.003,
-        f"best={best_row['threshold']:.3f}",
+        selected_threshold + 0.003,
+        float(selected_row["f1_mitterrand"]) - 0.003,
+        f"selected={selected_threshold:.3f}",
         fontsize=10,
     )
     ax.set_xlabel("Decision Threshold")
@@ -937,20 +1028,18 @@ def plot_fold_heatmap(fold_metrics):
     heatmap_frame = fold_metrics.set_index("fold")[
         [
             "accuracy",
-            "balanced_accuracy",
-            "precision_macro",
-            "recall_macro",
-            "f1_macro",
+            "precision_mitterrand",
+            "recall_mitterrand",
+            "f1_mitterrand",
             "roc_auc",
             "pr_auc",
         ]
     ].rename(
         columns={
             "accuracy": "Accuracy",
-            "balanced_accuracy": "Balanced Acc.",
-            "precision_macro": "Precision",
-            "recall_macro": "Recall",
-            "f1_macro": "Macro-F1",
+            "precision_mitterrand": POSITIVE_PRECISION_LABEL,
+            "recall_mitterrand": POSITIVE_RECALL_LABEL,
+            "f1_mitterrand": POSITIVE_F1_LABEL,
             "roc_auc": "ROC AUC",
             "pr_auc": "PR AUC",
         }
@@ -1339,30 +1428,31 @@ def plot_probability_trajectories(trajectory_frame, speech_ids):
 
 
 def plot_model_comparison_oof(model_comparison_frame):
-    plot_frame = model_comparison_frame.sort_values("oof_f1_macro", ascending=True)
+    plot_frame = model_comparison_frame.sort_values("oof_f1_mitterrand", ascending=True)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.barh(
         plot_frame["model"],
-        plot_frame["oof_f1_macro"],
+        plot_frame["oof_f1_mitterrand"],
         color=[MODEL_COLOR_MAP[model] for model in plot_frame["model"]],
     )
-    ax.set_xlabel("OOF Macro-F1 at Tuned Threshold")
+    ax.set_xlabel("OOF F1 (Mitterrand positive) at Tuned Threshold")
     ax.set_title("Model Comparison on Train OOF Predictions")
     for _, row in plot_frame.iterrows():
-        ax.text(row["oof_f1_macro"] + 0.002, row["model"], f"{row['oof_f1_macro']:.3f}", va="center")
+        ax.text(row["oof_f1_mitterrand"] + 0.002, row["model"], f"{row['oof_f1_mitterrand']:.3f}", va="center")
     return fig
 
 
-def plot_fusion_alpha_sweep(fusion_dir):
-    alpha_sweep = pd.read_csv(fusion_dir / "alpha_sweep.csv")
+def plot_fusion_alpha_sweep(fusion_dir, camembert_train_dir):
+    alpha_sweep = build_fusion_alpha_sweep_frame(fusion_dir, camembert_train_dir)
+    selected_alpha = float(load_json(Path(fusion_dir) / "metrics.json")["calibration"]["alpha"])
+    selected_row = alpha_sweep.loc[np.isclose(alpha_sweep["alpha"], selected_alpha)].iloc[0]
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.plot(alpha_sweep["alpha"], alpha_sweep["f1_macro"], marker="o", linewidth=2.2, color="#55a868")
-    best_row = alpha_sweep.sort_values(["f1_macro", "balanced_accuracy", "alpha"], ascending=[False, False, True]).iloc[0]
-    ax.axvline(best_row["alpha"], color="#2f2f2f", linestyle="--", linewidth=1.2)
+    ax.plot(alpha_sweep["alpha"], alpha_sweep["f1_mitterrand"], marker="o", linewidth=2.2, color="#55a868")
+    ax.axvline(selected_alpha, color="#2f2f2f", linestyle="--", linewidth=1.2)
     ax.set_xlabel("BiLSTM Weight Alpha")
-    ax.set_ylabel("OOF Macro-F1")
+    ax.set_ylabel("OOF F1 (Mitterrand positive)")
     ax.set_title("Weighted Fusion Alpha Sweep")
-    ax.text(float(best_row["alpha"]) + 0.01, float(best_row["f1_macro"]) - 0.003, f"best={best_row['alpha']:.2f}")
+    ax.text(selected_alpha + 0.01, float(selected_row["f1_mitterrand"]) - 0.003, f"selected={selected_alpha:.2f}")
     return fig
 
 
@@ -1416,9 +1506,9 @@ def main():
                 "best_epoch",
                 "tuned_threshold",
                 "oof_accuracy_tuned",
-                "oof_precision_macro_tuned",
-                "oof_recall_macro_tuned",
-                "oof_f1_macro_tuned",
+                "oof_precision_mitterrand_tuned",
+                "oof_recall_mitterrand_tuned",
+                "oof_f1_mitterrand_tuned",
                 "oof_roc_auc",
                 "oof_pr_auc",
                 "start_lag_mean",
@@ -1443,9 +1533,9 @@ def main():
                 "fold",
                 "accuracy",
                 "balanced_accuracy",
-                "precision_macro",
-                "recall_macro",
-                "f1_macro",
+                "precision_mitterrand",
+                "recall_mitterrand",
+                "f1_mitterrand",
                 "roc_auc",
                 "pr_auc",
             ]
@@ -1461,9 +1551,9 @@ def main():
             [
                 "model",
                 "oof_accuracy",
-                "oof_precision_macro",
-                "oof_recall_macro",
-                "oof_f1_macro",
+                "oof_precision_mitterrand",
+                "oof_recall_mitterrand",
+                "oof_f1_mitterrand",
                 "oof_roc_auc",
                 "oof_pr_auc",
                 "threshold",
@@ -1566,7 +1656,11 @@ def main():
 
     for path in save_figure(plot_model_comparison_oof(model_comparison_frame), "model_comparison_oof", FIGURES_DIR):
         asset_paths["report_figures"].append(path)
-    for path in save_figure(plot_fusion_alpha_sweep(fusion_source_dir), "fusion_alpha_sweep", FIGURES_DIR):
+    for path in save_figure(
+        plot_fusion_alpha_sweep(fusion_source_dir, camembert_train_dir),
+        "fusion_alpha_sweep",
+        FIGURES_DIR,
+    ):
         asset_paths["report_figures"].append(path)
 
     metadata = {
