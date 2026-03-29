@@ -184,7 +184,7 @@ serve the same purpose.
 
 The official presidents BiLSTM path uses:
 
-- [build_president_sequence_artifacts.py](/home/paulbeglin/projects/RITAL-NLP-project/spark/build_president_sequence_artifacts.py)
+- [build_president_sequence_artifacts.py](spark/build_president_sequence_artifacts.py)
 
 This script:
 
@@ -201,7 +201,7 @@ This is the path to use when reproducing the main presidents results.
 
 The repository also contains:
 
-- [embed.py](/home/paulbeglin/projects/RITAL-NLP-project/spark/embed.py)
+- [embed.py](spark/embed.py)
 
 This is an older, more generic utility script. It differs from the official
 presidents builder in several ways:
