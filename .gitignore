@@ -14,6 +14,9 @@ tmes/out
 models/
 docs/RITAL_NLP_Projet-2_h22/
 main-2.pdf
+docs/RITAL_NLP_Projet-LATEST-h24/
+.DS_Store
+envs/
 
 # uv
 uv.lock
